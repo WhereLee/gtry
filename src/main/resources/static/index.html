@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Helpdesk · 多租户 AI 客服</title>
+    <link rel="stylesheet" href="/style.css"/>
+</head>
+<body>
+<section id="login-view" class="login">
+    <form id="login-form" class="login-card">
+        <h1>Helpdesk</h1>
+        <p class="muted">多租户 AI 工单与客服平台</p>
+        <label>租户
+            <select id="tenant">
+                <option value="acme">acme（电商客服）</option>
+                <option value="cloudwise">cloudwise（SaaS 客服）</option>
+            </select>
+        </label>
+        <label>邮箱
+            <input id="email" type="email" value="agent@acme.test" autocomplete="username"/>
+        </label>
+        <label>密码
+            <input id="password" type="password" value="agent123" autocomplete="current-password"/>
+        </label>
+        <button type="submit">登录</button>
+        <p id="login-error" class="error"></p>
+        <p class="muted small">管理员：admin@acme.test / admin123（可编辑知识库）</p>
+    </form>
+</section>
+
+<section id="app-view" class="app hidden">
+    <header class="topbar">
+        <div class="brand">Helpdesk</div>
+        <nav class="tabs">
+            <button id="tab-tickets" class="tab active">工单</button>
+            <button id="tab-wiki" class="tab">知识库</button>
+        </nav>
+        <div class="who">
+            <span id="who-tenant" class="pill"></span>
+            <span id="who-user" class="muted"></span>
+            <span id="usage" class="pill ghost"></span>
+            <button id="logout" class="link">退出</button>
+        </div>
+    </header>
+
+    <main id="tickets-view" class="layout">
+        <aside class="sidebar">
+            <form id="create-form" class="create">
+                <input id="subject" placeholder="工单标题" required maxlength="255"/>
+                <textarea id="description" placeholder="客户问题描述" required rows="3"></textarea>
+                <button type="submit">新建工单</button>
+            </form>
+            <div class="list-head">
+                <span>工单</span>
+                <select id="status-filter">
+                    <option value="">全部</option>
+                    <option value="OPEN">待处理</option>
+                    <option value="PENDING">处理中</option>
+                    <option value="CLOSED">已关闭</option>
+                </select>
+            </div>
+            <ul id="ticket-list" class="tickets"></ul>
+        </aside>
+
+        <section class="detail">
+            <div id="empty-detail" class="empty">选择或新建一个工单</div>
+            <div id="ticket-panel" class="hidden">
+                <div class="detail-head">
+                    <div>
+                        <h2 id="ticket-subject"></h2>
+                        <div class="muted" id="ticket-meta"></div>
+                    </div>
+                    <div class="actions">
+                        <button id="ai-button" class="primary">AI 建议回复</button>
+                        <button id="close-ticket" class="ghost">关闭工单</button>
+                    </div>
+                </div>
+                <div id="messages" class="messages"></div>
+                <div id="citations" class="citations hidden"></div>
+            </div>
+        </section>
+    </main>
+
+    <main id="wiki-view" class="layout hidden">
+        <aside class="sidebar">
+            <div class="list-head"><span>知识空间</span></div>
+            <ul id="space-list" class="tickets"></ul>
+            <div class="list-head">
+                <span>页面</span>
+                <button id="new-page" class="link">+ 新建</button>
+            </div>
+            <ul id="page-list" class="tickets"></ul>
+        </aside>
+
+        <section class="detail">
+            <div class="detail-head">
+                <div>
+                    <h2 id="wiki-title">知识库</h2>
+                    <div class="muted" id="wiki-meta">选择空间和页面，或新建一个页面</div>
+                </div>
+                <div class="actions">
+                    <button id="wiki-save" class="primary">保存</button>
+                    <button id="wiki-reindex" class="ghost">重建索引</button>
+                    <button id="wiki-delete" class="ghost">删除</button>
+                </div>
+            </div>
+            <div class="wiki-editor">
+                <div class="editor-row">
+                    <label>标题
+                        <input id="wiki-page-title" placeholder="页面标题"/>
+                    </label>
+                    <label>可见性
+                        <select id="wiki-visibility">
+                            <option value="PUBLIC">PUBLIC（客户可见）</option>
+                            <option value="INTERNAL">INTERNAL（仅内部）</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="wiki-sections" class="sections"></div>
+                <button id="add-section" class="ghost">+ 添加小节</button>
+
+                <div class="search-panel">
+                    <div class="search-row">
+                        <input id="wiki-query" placeholder="测试检索：输入一个客户问题"/>
+                        <button id="wiki-search" class="primary">检索</button>
+                    </div>
+                    <div id="wiki-results" class="search-results"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+</section>
+
+<script src="/app.js"></script>
+</body>
+</html>

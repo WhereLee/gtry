@@ -1,0 +1,88 @@
+server:
+  port: ${SERVER_PORT:8091}
+  shutdown: graceful
+
+spring:
+  application:
+    name: helpdesk
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://127.0.0.1:5432/helpdesk}
+    username: ${DB_USER:helpdesk_app}
+    password: ${DB_PASSWORD:helpdesk_app}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:12}
+      minimum-idle: 2
+      connection-timeout: 5000
+      initialization-fail-timeout: -1
+  flyway:
+    enabled: true
+    url: ${FLYWAY_URL:jdbc:postgresql://127.0.0.1:5432/helpdesk}
+    user: ${FLYWAY_USER:postgres}
+    password: ${FLYWAY_PASSWORD:root}
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:1}
+      timeout: 2s
+  codec:
+    max-in-memory-size: 2MB
+
+helpdesk:
+  jwt:
+    secret: ${HELPDESK_JWT_SECRET:helpdesk-demo-jwt-secret-change-me-32-bytes}
+    ttl-minutes: ${HELPDESK_JWT_TTL_MINUTES:480}
+  llm:
+    provider: ${HELPDESK_LLM_PROVIDER:deepseek}
+    base-url: ${HELPDESK_LLM_BASE_URL:https://api.deepseek.com}
+    api-key: ${HELPDESK_LLM_API_KEY:}
+    model: ${HELPDESK_LLM_MODEL:deepseek-flash}
+    effort: ${HELPDESK_LLM_EFFORT:low}
+    timeout-seconds: ${HELPDESK_LLM_TIMEOUT_SECONDS:60}
+  embedding:
+    provider: ${HELPDESK_EMBEDDING_PROVIDER:onnx}
+    dimension: ${HELPDESK_EMBEDDING_DIMENSION:768}
+    model-path: ${HELPDESK_EMBEDDING_MODEL_PATH:D:/models/onnx-int8/bge-base-zh-v1.5-onnx-int8}
+    max-length: ${HELPDESK_EMBEDDING_MAX_LENGTH:512}
+    query-prefix: ${HELPDESK_EMBEDDING_QUERY_PREFIX:为这个句子生成表示以用于检索相关文章：}
+    base-url: ${HELPDESK_EMBEDDING_BASE_URL:http://127.0.0.1:11434/v1}
+    model: ${HELPDESK_EMBEDDING_MODEL:bge-m3}
+  rag:
+    chunk-size: ${HELPDESK_RAG_CHUNK_SIZE:700}
+    chunk-overlap: ${HELPDESK_RAG_CHUNK_OVERLAP:80}
+    top-k: ${HELPDESK_RAG_TOP_K:5}
+  rerank:
+    enabled: ${HELPDESK_RERANK_ENABLED:true}
+    model-path: ${HELPDESK_RERANK_MODEL_PATH:D:/models/onnx-int8/bge-reranker-base-onnx-int8}
+    max-length: ${HELPDESK_RERANK_MAX_LENGTH:512}
+  wiki:
+    vector-candidates: ${HELPDESK_WIKI_VECTOR_CANDIDATES:20}
+    fts-candidates: ${HELPDESK_WIKI_FTS_CANDIDATES:20}
+    rerank-candidates: ${HELPDESK_WIKI_RERANK_CANDIDATES:10}
+    rrf-k: ${HELPDESK_WIKI_RRF_K:60}
+    freshness-boost: ${HELPDESK_WIKI_FRESHNESS_BOOST:0.02}
+    include-internal-default: ${HELPDESK_WIKI_INCLUDE_INTERNAL:true}
+  quota:
+    default-monthly-tokens: ${HELPDESK_DEFAULT_MONTHLY_TOKENS:200000}
+    rate-limit-per-minute: ${HELPDESK_RATE_LIMIT_PER_MINUTE:60}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  file:
+    name: ${LOG_FILE:logs/helpdesk.log}
+  logback:
+    rollingpolicy:
+      max-file-size: 50MB
+      max-history: 14
+  level:
+    com.wherelee.helpdesk: info

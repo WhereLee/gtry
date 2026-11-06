@@ -1,0 +1,9 @@
+target/
+logs/
+.env
+.env.local
+*.log
+*.token
+*.ticket
+.idea/
+*.iml
