@@ -1,5 +1,7 @@
 # Helpdesk
 
+[![ci](https://github.com/WhereLee/gtry/actions/workflows/ci.yml/badge.svg)](https://github.com/WhereLee/gtry/actions/workflows/ci.yml)
+
 多租户 AI 工单与客服平台。一套系统服务多个客户（租户），每个租户有自己的知识库、客服坐席、AI 配置、用量预算和数据边界。
 
 当前阶段：**后端主链路已跑通**，知识库采用 wiki 模型（空间/页面/小节），
