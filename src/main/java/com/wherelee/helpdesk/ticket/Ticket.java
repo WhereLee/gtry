@@ -12,6 +12,9 @@ public record Ticket(
         String description,
         String status,
         String priority,
+        String category,
+        String triageSource,
+        String triageReason,
         UUID assigneeId,
         Instant createdAt,
         Instant updatedAt

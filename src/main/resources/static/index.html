@@ -15,6 +15,7 @@
             <select id="tenant">
                 <option value="acme">acme（电商客服）</option>
                 <option value="cloudwise">cloudwise（SaaS 客服）</option>
+                <option value="platform">platform（平台管理）</option>
             </select>
         </label>
         <label>邮箱
@@ -35,6 +36,8 @@
         <nav class="tabs">
             <button id="tab-tickets" class="tab active">工单</button>
             <button id="tab-wiki" class="tab">知识库</button>
+            <button id="tab-usage" class="tab">用量</button>
+            <button id="tab-platform" class="tab hidden">平台</button>
         </nav>
         <div class="who">
             <span id="who-tenant" class="pill"></span>
@@ -76,8 +79,25 @@
                         <button id="close-ticket" class="ghost">关闭工单</button>
                     </div>
                 </div>
+                <div class="triage">
+                    <div><span class="label">分类</span><span id="ticket-category" class="pill"></span></div>
+                    <div><span class="label">优先级</span><span id="ticket-priority" class="pill"></span></div>
+                    <div><span class="label">负责人</span><span id="ticket-assignee" class="muted"></span></div>
+                    <div class="grow"><span class="label">分诊依据</span><span id="ticket-triage-reason" class="muted small"></span></div>
+                    <button id="retriage" class="link">重新分诊</button>
+                </div>
+                <div class="triage-edit">
+                    <select id="triage-category" aria-label="分类"></select>
+                    <select id="triage-priority" aria-label="优先级"></select>
+                    <select id="triage-assignee" aria-label="负责人"></select>
+                    <button id="triage-apply" class="ghost">调整分诊</button>
+                </div>
                 <div id="messages" class="messages"></div>
                 <div id="citations" class="citations hidden"></div>
+                <form id="reply-form" class="reply-form">
+                    <textarea id="reply-content" rows="3" placeholder="人工回复客户，Ctrl+Enter 发送"></textarea>
+                    <button type="submit" class="primary">发送回复</button>
+                </form>
             </div>
         </section>
     </main>
@@ -129,6 +149,73 @@
                 </div>
             </div>
         </section>
+    </main>
+
+    <main id="usage-view" class="page hidden">
+        <div class="page-head">
+            <div>
+                <h2>用量与成本</h2>
+                <div class="muted small">本月 token、预算、成本与近 14 天趋势</div>
+            </div>
+            <button id="usage-refresh" class="ghost">刷新</button>
+        </div>
+        <div id="usage-cards" class="cards"></div>
+        <div class="panel">
+            <div class="panel-head">
+                <h3>近 14 天 token</h3>
+                <span class="muted small">按自然日聚合</span>
+            </div>
+            <div id="usage-chart" class="chart"></div>
+        </div>
+    </main>
+
+    <main id="platform-view" class="page hidden">
+        <div class="page-head">
+            <div>
+                <h2>平台管理</h2>
+                <div class="muted small">租户生命周期、用量与数据导出</div>
+            </div>
+            <button id="platform-refresh" class="ghost">刷新</button>
+        </div>
+        <form id="tenant-form" class="panel tenant-form">
+            <div class="panel-head">
+                <h3>开通租户</h3>
+                <span class="muted small">同时创建租户管理员</span>
+            </div>
+            <div class="form-grid">
+                <label>Slug<input id="tenant-slug" placeholder="acme-support" required/></label>
+                <label>名称<input id="tenant-name" placeholder="Acme Support" required/></label>
+                <label>套餐
+                    <select id="tenant-plan">
+                        <option value="free">free</option>
+                        <option value="pro" selected>pro</option>
+                        <option value="business">business</option>
+                    </select>
+                </label>
+                <label>月度 token 预算<input id="tenant-budget" type="number" min="1000" value="200000"/></label>
+                <label>管理员邮箱<input id="tenant-admin-email" type="email" placeholder="admin@example.com" required/></label>
+                <label>管理员密码<input id="tenant-admin-password" type="password" minlength="8" placeholder="至少 8 位" required/></label>
+                <label>管理员名称<input id="tenant-admin-name" placeholder="Admin"/></label>
+            </div>
+            <button type="submit" class="primary">创建租户</button>
+        </form>
+        <div class="panel">
+            <div class="panel-head">
+                <h3>租户列表</h3>
+                <span class="muted small">停用后该租户无法登录</span>
+            </div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                    <tr>
+                        <th>租户</th><th>状态</th><th>套餐</th><th>用户</th><th>工单</th>
+                        <th>本月用量</th><th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody id="tenant-table"></tbody>
+                </table>
+            </div>
+        </div>
     </main>
 </section>
 

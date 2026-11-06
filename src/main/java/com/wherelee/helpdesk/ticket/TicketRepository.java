@@ -22,6 +22,9 @@ public class TicketRepository {
             rs.getString("description"),
             rs.getString("status"),
             rs.getString("priority"),
+            rs.getString("category"),
+            rs.getString("triage_source"),
+            rs.getString("triage_reason"),
             rs.getObject("assignee_id", UUID.class),
             rs.getTimestamp("created_at").toInstant(),
             rs.getTimestamp("updated_at").toInstant()
@@ -45,19 +48,27 @@ public class TicketRepository {
         this.jdbc = jdbc;
     }
 
-    public Ticket create(UUID tenantId, String subject, String description, String priority, UUID assigneeId) {
+    public Ticket create(
+            UUID tenantId, String subject, String description, String priority,
+            String category, String triageSource, String triageReason, UUID assigneeId
+    ) {
         return jdbc.queryForObject("""
-                INSERT INTO ticket (tenant_id, subject, description, priority, assignee_id)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO ticket
+                    (tenant_id, subject, description, priority, category,
+                     triage_source, triage_reason, assignee_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id, tenant_id, channel_id, external_ref, subject, description,
-                          status, priority, assignee_id, created_at, updated_at
-                """, MAPPER, tenantId, subject, description, priority, assigneeId);
+                          status, priority, category, triage_source, triage_reason,
+                          assignee_id, created_at, updated_at
+                """, MAPPER, tenantId, subject, description, priority, category,
+                triageSource, triageReason, assigneeId);
     }
 
     public Optional<Ticket> findById(UUID id) {
         return jdbc.query("""
                 SELECT id, tenant_id, channel_id, external_ref, subject, description,
-                       status, priority, assignee_id, created_at, updated_at
+                       status, priority, category, triage_source, triage_reason,
+                       assignee_id, created_at, updated_at
                 FROM ticket WHERE id = ?
                 """, MAPPER, id).stream().findFirst();
     }
@@ -66,13 +77,15 @@ public class TicketRepository {
         if (status == null || status.isBlank()) {
             return jdbc.query("""
                     SELECT id, tenant_id, channel_id, external_ref, subject, description,
-                           status, priority, assignee_id, created_at, updated_at
+                           status, priority, category, triage_source, triage_reason,
+                           assignee_id, created_at, updated_at
                     FROM ticket ORDER BY created_at DESC LIMIT ?
                     """, MAPPER, limit);
         }
         return jdbc.query("""
                 SELECT id, tenant_id, channel_id, external_ref, subject, description,
-                       status, priority, assignee_id, created_at, updated_at
+                       status, priority, category, triage_source, triage_reason,
+                       assignee_id, created_at, updated_at
                 FROM ticket WHERE status = ? ORDER BY created_at DESC LIMIT ?
                 """, MAPPER, status, limit);
     }
@@ -81,6 +94,33 @@ public class TicketRepository {
         return jdbc.update("""
                 UPDATE ticket SET status = ?, updated_at = now() WHERE id = ?
                 """, status, id) > 0;
+    }
+
+    public boolean updateTriage(
+            UUID id, String category, String priority, UUID assigneeId,
+            String source, String reason
+    ) {
+        return jdbc.update("""
+                UPDATE ticket
+                SET category = ?, priority = ?, assignee_id = ?,
+                    triage_source = ?, triage_reason = ?, updated_at = now()
+                WHERE id = ?
+                """, category, priority, assigneeId, source, reason, id) > 0;
+    }
+
+    public Optional<UUID> findLeastLoadedAgent(UUID tenantId) {
+        return jdbc.query("""
+                SELECT u.id
+                FROM app_user u
+                WHERE u.tenant_id = ?
+                  AND u.role IN ('AGENT', 'TENANT_ADMIN') AND u.status = 'ACTIVE'
+                ORDER BY CASE WHEN u.role = 'AGENT' THEN 0 ELSE 1 END,
+                (
+                    SELECT count(*) FROM ticket t
+                    WHERE t.assignee_id = u.id AND t.status IN ('OPEN', 'PENDING')
+                ) ASC, u.id
+                LIMIT 1
+                """, (rs, rowNum) -> rs.getObject("id", UUID.class), tenantId).stream().findFirst();
     }
 
     public TicketMessage addMessage(

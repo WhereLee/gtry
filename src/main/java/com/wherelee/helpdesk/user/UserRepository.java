@@ -5,6 +5,8 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.List;
+import java.util.UUID;
 
 @Repository
 public class UserRepository {
@@ -37,5 +39,32 @@ public class UserRepository {
                 SELECT id, tenant_id, email, password_hash, display_name, role, status
                 FROM app_user WHERE id = ?
                 """, MAPPER, id).stream().findFirst();
+    }
+
+    public AppUser create(
+            UUID tenantId, String email, String passwordHash, String displayName, String role
+    ) {
+        return jdbc.queryForObject("""
+                INSERT INTO app_user (tenant_id, email, password_hash, display_name, role)
+                VALUES (?, ?, ?, ?, ?)
+                RETURNING id, tenant_id, email, password_hash, display_name, role, status
+                """, MAPPER, tenantId, email, passwordHash, displayName, role);
+    }
+
+    public List<AppUser> listByTenant(UUID tenantId) {
+        return jdbc.query("""
+                SELECT id, tenant_id, email, password_hash, display_name, role, status
+                FROM app_user WHERE tenant_id = ? ORDER BY created_at
+                """, MAPPER, tenantId);
+    }
+
+    public List<AppUser> listAssignable(UUID tenantId) {
+        return jdbc.query("""
+                SELECT id, tenant_id, email, password_hash, display_name, role, status
+                FROM app_user
+                WHERE tenant_id = ?
+                  AND role IN ('AGENT', 'TENANT_ADMIN') AND status = 'ACTIVE'
+                ORDER BY display_name
+                """, MAPPER, tenantId);
     }
 }

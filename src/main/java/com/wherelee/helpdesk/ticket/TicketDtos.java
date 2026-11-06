@@ -24,12 +24,22 @@ public final class TicketDtos {
     ) {
     }
 
+    public record UpdateTriageRequest(
+            String category,
+            String priority,
+            UUID assigneeId
+    ) {
+    }
+
     public record TicketView(
             UUID id,
             String subject,
             String description,
             String status,
             String priority,
+            String category,
+            String triageSource,
+            String triageReason,
             UUID assigneeId,
             Instant createdAt,
             Instant updatedAt
@@ -37,7 +47,8 @@ public final class TicketDtos {
         public static TicketView of(Ticket ticket) {
             return new TicketView(
                     ticket.id(), ticket.subject(), ticket.description(), ticket.status(),
-                    ticket.priority(), ticket.assigneeId(), ticket.createdAt(), ticket.updatedAt()
+                    ticket.priority(), ticket.category(), ticket.triageSource(), ticket.triageReason(),
+                    ticket.assigneeId(), ticket.createdAt(), ticket.updatedAt()
             );
         }
     }

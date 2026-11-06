@@ -6,6 +6,7 @@ import com.wherelee.helpdesk.ai.ClientDisconnectedException;
 import com.wherelee.helpdesk.quota.QuotaService;
 import com.wherelee.helpdesk.tenant.TenantContext;
 import com.wherelee.helpdesk.tenant.TenantScope;
+import com.wherelee.helpdesk.user.UserRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -30,6 +31,8 @@ public class TicketService {
     private static final Logger log = LoggerFactory.getLogger(TicketService.class);
 
     private final TicketRepository tickets;
+    private final TicketTriageService triageService;
+    private final UserRepository users;
     private final RagService ragService;
     private final QuotaService quotaService;
     private final ObjectMapper objectMapper;
@@ -40,6 +43,8 @@ public class TicketService {
 
     public TicketService(
             TicketRepository tickets,
+            TicketTriageService triageService,
+            UserRepository users,
             RagService ragService,
             QuotaService quotaService,
             ObjectMapper objectMapper,
@@ -47,6 +52,8 @@ public class TicketService {
             MeterRegistry meterRegistry
     ) {
         this.tickets = tickets;
+        this.triageService = triageService;
+        this.users = users;
         this.ragService = ragService;
         this.quotaService = quotaService;
         this.objectMapper = objectMapper;
@@ -58,8 +65,14 @@ public class TicketService {
 
     public TicketDtos.TicketView create(String subject, String description, String priority) {
         TenantScope scope = requireScope();
-        String effectivePriority = priority == null || priority.isBlank() ? "NORMAL" : priority.toUpperCase();
-        Ticket ticket = tickets.create(scope.tenantId(), subject, description, effectivePriority, scope.userId());
+        TicketTriageService.TriageResult triage = triageService.triage(
+                subject, description, scope.tenantId());
+        String effectivePriority = priority == null || priority.isBlank()
+                ? triage.priority()
+                : priority.toUpperCase();
+        Ticket ticket = tickets.create(
+                scope.tenantId(), subject, description, effectivePriority,
+                triage.category(), triage.source(), triage.reason(), triage.assigneeId());
         tickets.addMessage(scope.tenantId(), ticket.id(), "CUSTOMER", null, description, "[]", 0);
         return TicketDtos.TicketView.of(ticket);
     }
@@ -79,12 +92,54 @@ public class TicketService {
 
     public TicketDtos.MessageView addMessage(UUID id, String content) {
         TenantScope scope = requireScope();
-        tickets.findById(id)
+        Ticket ticket = tickets.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ticket_not_found"));
         TicketMessage message = tickets.addMessage(
                 scope.tenantId(), id, "AGENT", scope.userId(), content, "[]", 0);
-        tickets.touch(id);
+        if (!"PENDING".equals(ticket.status())) {
+            tickets.updateStatus(id, "PENDING");
+        } else {
+            tickets.touch(id);
+        }
         return TicketDtos.MessageView.of(message);
+    }
+
+    public TicketDtos.TicketView retriage(UUID id) {
+        Ticket ticket = tickets.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ticket_not_found"));
+        TicketTriageService.TriageResult triage = triageService.triage(
+                ticket.subject(), ticket.description(), ticket.tenantId());
+        tickets.updateTriage(
+                id, triage.category(), triage.priority(), triage.assigneeId(),
+                triage.source(), triage.reason());
+        return TicketDtos.TicketView.of(tickets.findById(id).orElseThrow());
+    }
+
+    public TicketDtos.TicketView updateTriage(UUID id, TicketDtos.UpdateTriageRequest request) {
+        Ticket ticket = tickets.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ticket_not_found"));
+        String category = ticket.category();
+        String priority = ticket.priority();
+        UUID assigneeId = ticket.assigneeId();
+        if (request.category() != null && !request.category().isBlank()) {
+            category = request.category().toUpperCase();
+            if (!triageService.isValidCategory(category)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_category");
+            }
+        }
+        if (request.priority() != null && !request.priority().isBlank()) {
+            priority = request.priority().toUpperCase();
+            if (!triageService.isValidPriority(priority)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_priority");
+            }
+        }
+        if (request.assigneeId() != null) {
+            users.findById(request.assigneeId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "assignee_not_found"));
+            assigneeId = request.assigneeId();
+        }
+        tickets.updateTriage(id, category, priority, assigneeId, "MANUAL", "人工调整分诊");
+        return TicketDtos.TicketView.of(tickets.findById(id).orElseThrow());
     }
 
     public TicketDtos.TicketView updateStatus(UUID id, String status) {

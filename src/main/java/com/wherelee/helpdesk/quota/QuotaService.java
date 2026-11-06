@@ -10,6 +10,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.UUID;
 
 @Service
@@ -78,6 +82,21 @@ public class QuotaService {
                 cost,
                 config.getRateLimitPerMinute()
         );
+    }
+
+    public List<UsageRepository.DailyUsage> daily(UUID tenantId, int days) {
+        int safeDays = Math.max(1, Math.min(days, 90));
+        Map<String, UsageRepository.DailyUsage> byDate = new HashMap<>();
+        for (UsageRepository.DailyUsage row : usage.daily(tenantId, safeDays)) {
+            byDate.put(row.date(), row);
+        }
+        List<UsageRepository.DailyUsage> result = new ArrayList<>(safeDays);
+        LocalDate today = LocalDate.now();
+        for (int i = safeDays - 1; i >= 0; i--) {
+            String date = today.minusDays(i).toString();
+            result.add(byDate.getOrDefault(date, new UsageRepository.DailyUsage(date, 0, 0)));
+        }
+        return result;
     }
 
     public record UsageView(

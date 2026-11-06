@@ -1,3 +1,14 @@
+const CATEGORY_LABELS = {
+    RETURNS: '退货售后', SHIPPING: '配送物流', INVOICE: '发票财务', PAYMENT: '支付问题',
+    ACCOUNT: '账户安全', MEMBER: '会员权益', PRODUCT: '商品知识', PROMOTION: '优惠活动',
+    COMPLAINT: '投诉处理', QUOTA: '配额限制', BILLING: '计费套餐', PERMISSIONS: '权限管理',
+    INTEGRATION: '集成对接', SECURITY: '安全合规', BACKUP: '备份恢复', UPGRADE: '升级降级',
+    EXPORT: '数据导出', DELETION: '数据删除', PRIVACY: '隐私合规', SUPPORT: '服务支持',
+    OTHER: '其他',
+};
+
+const PRIORITY_LABELS = { LOW: '低', NORMAL: '普通', HIGH: '高', URGENT: '紧急' };
+
 const state = {
     token: sessionStorage.getItem('helpdesk.token'),
     user: null,
@@ -8,9 +19,23 @@ const state = {
     wikiPages: [],
     wikiSpaceId: null,
     wikiPageId: null,
+    agents: [],
+    platformTenants: [],
 };
 
 const $ = (id) => document.getElementById(id);
+
+function categoryLabel(code) {
+    return CATEGORY_LABELS[code] || code || '其他';
+}
+
+function priorityLabel(code) {
+    return PRIORITY_LABELS[code] || code || '普通';
+}
+
+function formatCost(micros) {
+    return `¥${(Number(micros || 0) / 1_000_000).toFixed(4)}`;
+}
 
 function authHeaders() {
     return { Authorization: `Bearer ${state.token}` };
@@ -62,6 +87,7 @@ function logout() {
     sessionStorage.removeItem('helpdesk.token');
     $('app-view').classList.add('hidden');
     $('login-view').classList.remove('hidden');
+    switchTab('tickets');
 }
 
 async function enterApp() {
@@ -72,7 +98,9 @@ async function enterApp() {
     }
     $('who-tenant').textContent = state.user.tenantSlug;
     $('who-user').textContent = `${state.user.displayName} · ${state.user.role}`;
-    await Promise.all([loadUsage(), loadTickets()]);
+    $('tab-platform').classList.toggle('hidden', state.user.role !== 'PLATFORM_ADMIN');
+    initTriageOptions();
+    await Promise.all([loadUsage(), loadTickets(), loadAgents()]);
 }
 
 async function loadUsage() {
@@ -81,6 +109,45 @@ async function loadUsage() {
         $('usage').textContent = `${usage.tokensThisMonth} / ${usage.monthlyTokenBudget} tokens`;
     } catch (error) {
         $('usage').textContent = '用量不可用';
+    }
+}
+
+async function loadAgents() {
+    try {
+        state.agents = await api('/api/users/agents');
+    } catch (error) {
+        state.agents = [];
+    }
+    const select = $('triage-assignee');
+    select.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '不指定';
+    select.appendChild(none);
+    for (const agent of state.agents) {
+        const option = document.createElement('option');
+        option.value = agent.id;
+        option.textContent = `${agent.displayName} · ${agent.email}`;
+        select.appendChild(option);
+    }
+}
+
+function initTriageOptions() {
+    const category = $('triage-category');
+    category.innerHTML = '';
+    for (const [code, label] of Object.entries(CATEGORY_LABELS)) {
+        const option = document.createElement('option');
+        option.value = code;
+        option.textContent = `${label}（${code}）`;
+        category.appendChild(option);
+    }
+    const priority = $('triage-priority');
+    priority.innerHTML = '';
+    for (const [code, label] of Object.entries(PRIORITY_LABELS)) {
+        const option = document.createElement('option');
+        option.value = code;
+        option.textContent = `${label}（${code}）`;
+        priority.appendChild(option);
     }
 }
 
@@ -99,11 +166,12 @@ function renderTickets() {
         li.className = 'ticket' + (ticket.id === state.activeId ? ' active' : '');
         li.innerHTML = `
             <div class="title"></div>
-            <div class="sub"><span></span><span></span></div>`;
+            <div class="sub"><span></span><span></span><span></span></div>`;
         li.querySelector('.title').textContent = ticket.subject;
-        const [status, priority] = li.querySelectorAll('.sub span');
+        const [status, priority, category] = li.querySelectorAll('.sub span');
         status.textContent = ticket.status;
-        priority.textContent = ticket.priority;
+        priority.textContent = priorityLabel(ticket.priority);
+        category.textContent = categoryLabel(ticket.category);
         li.onclick = () => openTicket(ticket.id);
         list.appendChild(li);
     }
@@ -132,9 +200,64 @@ async function openTicket(id) {
     $('empty-detail').classList.add('hidden');
     $('ticket-panel').classList.remove('hidden');
     $('ticket-subject').textContent = detail.ticket.subject;
-    $('ticket-meta').textContent = `${detail.ticket.status} · ${detail.ticket.priority} · ${new Date(detail.ticket.createdAt).toLocaleString()}`;
+    $('ticket-meta').textContent =
+        `${detail.ticket.status} · ${priorityLabel(detail.ticket.priority)} · ` +
+        `${categoryLabel(detail.ticket.category)} · ${new Date(detail.ticket.createdAt).toLocaleString()}`;
+    renderTriage(detail.ticket);
     renderMessages(detail.messages);
     $('citations').classList.add('hidden');
+    $('reply-content').value = '';
+}
+
+function renderTriage(ticket) {
+    $('ticket-category').textContent = categoryLabel(ticket.category);
+    $('ticket-priority').textContent = priorityLabel(ticket.priority);
+    const assignee = state.agents.find((agent) => agent.id === ticket.assigneeId);
+    $('ticket-assignee').textContent = assignee
+        ? `${assignee.displayName} · ${assignee.email}`
+        : (ticket.assigneeId || '未分配');
+    $('ticket-triage-reason').textContent =
+        `${ticket.triageSource || 'RULE'} · ${ticket.triageReason || '未记录'}`;
+    $('triage-category').value = ticket.category || 'OTHER';
+    $('triage-priority').value = ticket.priority || 'NORMAL';
+    $('triage-assignee').value = ticket.assigneeId || '';
+}
+
+async function retriage() {
+    if (!state.activeId) return;
+    await api(`/api/tickets/${state.activeId}/triage`, { method: 'POST' });
+    await loadTickets();
+    await openTicket(state.activeId);
+}
+
+async function applyTriage() {
+    if (!state.activeId) return;
+    await api(`/api/tickets/${state.activeId}/triage`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            category: $('triage-category').value,
+            priority: $('triage-priority').value,
+            assigneeId: $('triage-assignee').value || null,
+        }),
+    });
+    await loadTickets();
+    await openTicket(state.activeId);
+}
+
+async function sendReply(event) {
+    event.preventDefault();
+    if (!state.activeId) return;
+    const content = $('reply-content').value.trim();
+    if (!content) return;
+    await api(`/api/tickets/${state.activeId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+    });
+    $('reply-content').value = '';
+    await loadTickets();
+    await openTicket(state.activeId);
 }
 
 function renderMessages(messages) {
@@ -252,13 +375,26 @@ async function closeTicket() {
 }
 
 function switchTab(tab) {
+    if (tab === 'platform' && (!state.user || state.user.role !== 'PLATFORM_ADMIN')) {
+        tab = 'tickets';
+    }
     state.tab = tab;
     $('tickets-view').classList.toggle('hidden', tab !== 'tickets');
     $('wiki-view').classList.toggle('hidden', tab !== 'wiki');
+    $('usage-view').classList.toggle('hidden', tab !== 'usage');
+    $('platform-view').classList.toggle('hidden', tab !== 'platform');
     $('tab-tickets').classList.toggle('active', tab === 'tickets');
     $('tab-wiki').classList.toggle('active', tab === 'wiki');
+    $('tab-usage').classList.toggle('active', tab === 'usage');
+    $('tab-platform').classList.toggle('active', tab === 'platform');
     if (tab === 'wiki' && !state.wikiSpaces.length) {
         loadWikiSpaces().catch(showApiError);
+    }
+    if (tab === 'usage') {
+        loadUsagePanel().catch(showApiError);
+    }
+    if (tab === 'platform') {
+        loadPlatform().catch(showApiError);
     }
 }
 
@@ -443,6 +579,226 @@ async function wikiSearch() {
     }
 }
 
+async function loadUsagePanel() {
+    const [summary, daily] = await Promise.all([
+        api('/api/usage/summary'),
+        api('/api/usage/daily?days=14'),
+    ]);
+    renderUsageCards(summary);
+    renderUsageChart(daily);
+}
+
+function usageCard(label, value, hint) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const labelNode = document.createElement('div');
+    labelNode.className = 'label';
+    labelNode.textContent = label;
+    const valueNode = document.createElement('div');
+    valueNode.className = 'value';
+    valueNode.textContent = value;
+    card.append(labelNode, valueNode);
+    if (hint) {
+        const hintNode = document.createElement('div');
+        hintNode.className = 'hint';
+        hintNode.textContent = hint;
+        card.appendChild(hintNode);
+    }
+    return card;
+}
+
+function renderUsageCards(summary) {
+    const box = $('usage-cards');
+    box.innerHTML = '';
+    const utilization = summary.monthlyTokenBudget > 0
+        ? summary.tokensThisMonth / summary.monthlyTokenBudget
+        : 0;
+    box.appendChild(usageCard(
+        '本月 tokens',
+        Number(summary.tokensThisMonth).toLocaleString(),
+        `预算 ${Number(summary.monthlyTokenBudget).toLocaleString()}`
+    ));
+    box.appendChild(usageCard(
+        '预算使用率',
+        `${(utilization * 100).toFixed(1)}%`,
+        utilization >= 0.9 ? '接近或超过预算' : '预算充足'
+    ));
+    box.appendChild(usageCard(
+        '本月成本',
+        formatCost(summary.costMicrosThisMonth),
+        '按当前单价估算'
+    ));
+    box.appendChild(usageCard(
+        '限流',
+        `${summary.rateLimitPerMinute} 次/分钟`,
+        '租户级固定窗口'
+    ));
+    const progressCard = usageCard('预算进度', `${(utilization * 100).toFixed(1)}%`, '');
+    const progress = document.createElement('div');
+    progress.className = 'progress';
+    const fill = document.createElement('span');
+    fill.style.width = `${Math.min(100, Math.max(0, utilization * 100))}%`;
+    progress.appendChild(fill);
+    progressCard.appendChild(progress);
+    box.appendChild(progressCard);
+}
+
+function renderUsageChart(daily) {
+    const box = $('usage-chart');
+    box.innerHTML = '';
+    const max = Math.max(1, ...daily.map((day) => Number(day.tokens)));
+    for (const day of daily) {
+        const column = document.createElement('div');
+        column.className = 'chart-bar';
+        const bar = document.createElement('div');
+        bar.className = 'bar' + (Number(day.tokens) === 0 ? ' zero' : '');
+        bar.style.height = `${Math.max(2, Math.round((Number(day.tokens) / max) * 150))}px`;
+        bar.title = `${day.date}: ${Number(day.tokens).toLocaleString()} tokens · ${formatCost(day.costMicros)}`;
+        const date = document.createElement('div');
+        date.className = 'date';
+        date.textContent = day.date.slice(5);
+        column.append(bar, date);
+        box.appendChild(column);
+    }
+}
+
+async function loadPlatform() {
+    state.platformTenants = await api('/api/platform/tenants');
+    renderPlatformTenants();
+}
+
+function renderPlatformTenants() {
+    const body = $('tenant-table');
+    body.innerHTML = '';
+    for (const tenant of state.platformTenants) {
+        const row = document.createElement('tr');
+
+        const nameCell = document.createElement('td');
+        nameCell.innerHTML = '<div class="title"></div><div class="muted small"></div>';
+        nameCell.querySelector('.title').textContent = tenant.name;
+        nameCell.querySelector('.muted').textContent =
+            `${tenant.slug} · ${new Date(tenant.createdAt).toLocaleDateString()}`;
+
+        const statusCell = document.createElement('td');
+        const status = document.createElement('span');
+        status.className = `badge ${tenant.status.toLowerCase()}`;
+        status.textContent = tenant.status;
+        statusCell.appendChild(status);
+
+        const planCell = document.createElement('td');
+        planCell.textContent = tenant.plan;
+
+        const userCell = document.createElement('td');
+        userCell.textContent = tenant.userCount;
+
+        const ticketCell = document.createElement('td');
+        ticketCell.textContent = tenant.ticketCount;
+
+        const usageCell = document.createElement('td');
+        usageCell.textContent =
+            `${Number(tenant.tokensThisMonth).toLocaleString()} / ${Number(tenant.monthlyTokenBudget).toLocaleString()}`;
+
+        const actions = document.createElement('td');
+        actions.className = 'actions';
+
+        const toggle = document.createElement('button');
+        toggle.textContent = tenant.status === 'ACTIVE' ? '停用' : '启用';
+        toggle.disabled = tenant.slug === 'platform';
+        toggle.onclick = () => toggleTenant(tenant).catch(showApiError);
+        actions.appendChild(toggle);
+
+        const exportButton = document.createElement('button');
+        exportButton.textContent = '导出';
+        exportButton.onclick = () => downloadTenant(tenant).catch(showApiError);
+        actions.appendChild(exportButton);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = '删除';
+        deleteButton.disabled = tenant.slug === 'platform';
+        deleteButton.onclick = () => deleteTenant(tenant).catch(showApiError);
+        actions.appendChild(deleteButton);
+
+        row.append(nameCell, statusCell, planCell, userCell, ticketCell, usageCell, actions);
+        body.appendChild(row);
+    }
+}
+
+async function toggleTenant(tenant) {
+    const next = tenant.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
+    await api(`/api/platform/tenants/${tenant.id}/status?status=${next}`, { method: 'PATCH' });
+    await loadPlatform();
+}
+
+async function downloadTenant(tenant) {
+    const response = await fetch(`/api/platform/tenants/${tenant.id}/export`, {
+        headers: authHeaders(),
+    });
+    if (!response.ok) {
+        throw new Error(await response.text());
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `tenant-${tenant.slug}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+async function deleteTenant(tenant) {
+    const confirmSlug = prompt(
+        `删除租户 ${tenant.slug} 会级联删除所有数据，且不可恢复。输入 slug 确认：`);
+    if (confirmSlug === null) return;
+    if (confirmSlug !== tenant.slug) {
+        alert('slug 不匹配，已取消');
+        return;
+    }
+    const job = await api(
+        `/api/platform/tenants/${tenant.id}?confirm=${encodeURIComponent(confirmSlug)}`,
+        { method: 'DELETE' }
+    );
+    if (job.state === 'RUNNING' || job.state === 'IDLE') {
+        await pollDeletion(tenant.id);
+    }
+    await loadPlatform();
+}
+
+async function pollDeletion(tenantId) {
+    for (let i = 0; i < 30; i++) {
+        const job = await api(`/api/platform/tenants/${tenantId}/delete-status`);
+        if (job.state === 'DONE') return;
+        if (job.state === 'FAILED') {
+            throw new Error(job.message || '删除失败');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    throw new Error('删除任务超时');
+}
+
+async function createTenant(event) {
+    event.preventDefault();
+    const payload = {
+        slug: $('tenant-slug').value.trim(),
+        name: $('tenant-name').value.trim(),
+        plan: $('tenant-plan').value,
+        monthlyTokenBudget: Number($('tenant-budget').value || 200000),
+        adminEmail: $('tenant-admin-email').value.trim(),
+        adminPassword: $('tenant-admin-password').value,
+        adminDisplayName: $('tenant-admin-name').value.trim(),
+    };
+    await api('/api/platform/tenants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    $('tenant-form').reset();
+    $('tenant-budget').value = '200000';
+    $('tenant-plan').value = 'pro';
+    await loadPlatform();
+}
+
 function showApiError(error) {
     let message = error && error.message ? error.message : '请求失败';
     try {
@@ -453,6 +809,21 @@ function showApiError(error) {
     }
     if (message.includes('tenant_admin_required')) {
         message = '需要租户管理员账号（admin@acme.test / admin123）';
+    }
+    if (message.includes('platform_admin_required')) {
+        message = '需要平台管理员账号（platform@helpdesk.test / platform123）';
+    }
+    if (message.includes('tenant_exists')) {
+        message = '该租户 slug 已存在';
+    }
+    if (message.includes('confirm_slug_required')) {
+        message = '删除租户需要输入正确的 slug 确认';
+    }
+    if (message.includes('cannot_delete_platform')) {
+        message = '平台租户不能删除';
+    }
+    if (message.includes('cannot_suspend_platform')) {
+        message = '平台租户不能停用';
     }
     alert(message);
 }
@@ -465,6 +836,19 @@ $('close-ticket').addEventListener('click', closeTicket);
 $('logout').addEventListener('click', logout);
 $('tab-tickets').addEventListener('click', () => switchTab('tickets'));
 $('tab-wiki').addEventListener('click', () => switchTab('wiki'));
+$('tab-usage').addEventListener('click', () => switchTab('usage'));
+$('tab-platform').addEventListener('click', () => switchTab('platform'));
+$('reply-form').addEventListener('submit', (event) => sendReply(event).catch(showApiError));
+$('reply-content').addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        sendReply(event).catch(showApiError);
+    }
+});
+$('retriage').addEventListener('click', () => retriage().catch(showApiError));
+$('triage-apply').addEventListener('click', () => applyTriage().catch(showApiError));
+$('usage-refresh').addEventListener('click', () => loadUsagePanel().catch(showApiError));
+$('platform-refresh').addEventListener('click', () => loadPlatform().catch(showApiError));
+$('tenant-form').addEventListener('submit', (event) => createTenant(event).catch(showApiError));
 $('new-page').addEventListener('click', newWikiPage);
 $('add-section').addEventListener('click', () => addSectionCard());
 $('wiki-save').addEventListener('click', () => saveWikiPage().catch(showApiError));

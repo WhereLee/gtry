@@ -57,6 +57,19 @@ public class TicketController {
         return ticketService.updateStatus(id, status);
     }
 
+    @PostMapping("/{id}/triage")
+    public TicketDtos.TicketView retriage(@PathVariable UUID id) {
+        return ticketService.retriage(id);
+    }
+
+    @PatchMapping("/{id}/triage")
+    public TicketDtos.TicketView updateTriage(
+            @PathVariable UUID id,
+            @RequestBody TicketDtos.UpdateTriageRequest request
+    ) {
+        return ticketService.updateTriage(id, request);
+    }
+
     @PostMapping(value = "/{id}/ai-suggest", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter aiSuggest(@PathVariable UUID id) {
         SseEmitter emitter = new SseEmitter(120_000L);
