@@ -44,7 +44,10 @@ public class EvalService {
         if (status.snapshot().state() == JobStatus.State.RUNNING) {
             return status.snapshot();
         }
-        status.start(samplePerTenant * 2);
+        int tenantCount = (int) tenants.findAll().stream()
+                .filter(tenant -> !"platform".equals(tenant.slug()))
+                .count();
+        status.start(samplePerTenant * Math.max(1, tenantCount));
         executor.submit(() -> run(samplePerTenant, kind));
         return status.snapshot();
     }
@@ -58,9 +61,9 @@ public class EvalService {
             List<Map<String, Object>> tenantResults = new ArrayList<>();
             List<Map<String, Object>> misses = new ArrayList<>();
             int total = 0;
-            double recall = 0;
-            double mrr = 0;
-            double ndcg = 0;
+            double recallWeighted = 0;
+            double mrrWeighted = 0;
+            double ndcgWeighted = 0;
             long totalMs = 0;
 
             for (Tenant tenant : tenants.findAll()) {
@@ -72,20 +75,21 @@ public class EvalService {
                         () -> evalTenant(tenant, samplePerTenant, kind, misses)
                 );
                 tenantResults.add(result);
-                total += (int) result.get("sample");
-                recall += (double) result.get("recallAt5");
-                mrr += (double) result.get("mrrAt10");
-                ndcg += (double) result.get("ndcgAt10");
-                totalMs += (long) result.get("avgMs");
+                int sampleCount = (int) result.get("sample");
+                total += sampleCount;
+                recallWeighted += (double) result.get("recallAt5") * sampleCount;
+                mrrWeighted += (double) result.get("mrrAt10") * sampleCount;
+                ndcgWeighted += (double) result.get("ndcgAt10") * sampleCount;
+                totalMs += (long) result.get("avgMs") * sampleCount;
                 status.progress(total);
             }
 
             Map<String, Object> overall = new LinkedHashMap<>();
             overall.put("sample", total);
-            overall.put("recallAt5", round(recall / Math.max(1, tenantResults.size())));
-            overall.put("mrrAt10", round(mrr / Math.max(1, tenantResults.size())));
-            overall.put("ndcgAt10", round(ndcg / Math.max(1, tenantResults.size())));
-            overall.put("avgMs", totalMs / Math.max(1, tenantResults.size()));
+            overall.put("recallAt5", round(recallWeighted / Math.max(1, total)));
+            overall.put("mrrAt10", round(mrrWeighted / Math.max(1, total)));
+            overall.put("ndcgAt10", round(ndcgWeighted / Math.max(1, total)));
+            overall.put("avgMs", totalMs / Math.max(1, total));
 
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("overall", overall);

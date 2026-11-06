@@ -3,6 +3,7 @@ package com.wherelee.helpdesk.wiki;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
@@ -31,6 +32,12 @@ public final class WikiPageDtos {
             @NotBlank @Size(max = 255) String title,
             String visibility,
             @NotEmpty @Valid List<SectionInput> sections
+    ) {
+    }
+
+    public record ImportQuestion(
+            @NotBlank @Size(max = 2000) String question,
+            @NotNull UUID pageId
     ) {
     }
 }

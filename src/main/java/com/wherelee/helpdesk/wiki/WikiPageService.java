@@ -97,6 +97,33 @@ public class WikiPageService {
         return indexService.indexPage(pageId);
     }
 
+    public int importQuestions(List<WikiPageDtos.ImportQuestion> questions, boolean replace) {
+        TenantScope scope = requireAdmin();
+        if (questions == null || questions.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "questions_required");
+        }
+        List<WikiRepository.QuestionRow> rows = new ArrayList<>(questions.size());
+        for (WikiPageDtos.ImportQuestion input : questions) {
+            if (input == null || input.question() == null || input.question().isBlank() || input.pageId() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "question_required");
+            }
+            repository.findPage(input.pageId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "page_not_found"));
+            UUID sectionId = repository.findFirstSectionId(input.pageId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "page_has_no_sections"));
+            rows.add(new WikiRepository.QuestionRow(
+                    UUID.randomUUID(), scope.tenantId(), sectionId, input.question().trim(), "REAL"));
+        }
+        transactionTemplate.executeWithoutResult(status -> {
+            if (replace) {
+                repository.deleteQuestionsByKind("REAL");
+            }
+            repository.insertQuestions(rows);
+            audit(scope, "wiki.questions.import", null, Map.of("count", rows.size(), "replace", replace));
+        });
+        return rows.size();
+    }
+
     private void insertSections(UUID tenantId, UUID pageId, List<WikiPageDtos.SectionInput> sections) {
         int seq = 0;
         for (WikiPageDtos.SectionInput input : sections) {
@@ -131,7 +158,8 @@ public class WikiPageService {
         try {
             repository.audit(
                     scope.tenantId(), scope.userId(), action,
-                    "wiki_page", targetId.toString(), objectMapper.writeValueAsString(detail));
+                    "wiki_page", targetId == null ? null : targetId.toString(),
+                    objectMapper.writeValueAsString(detail));
         } catch (Exception ex) {
             throw new IllegalStateException("audit write failed", ex);
         }

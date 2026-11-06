@@ -121,7 +121,7 @@ public class TicketService {
             }
             int tokens = result.tokens() > 0 ? result.tokens() : Math.max(1, buffer.text().length() / 2);
 
-            String citations = objectMapper.writeValueAsString(result.hits().stream()
+            String citations = objectMapper.writeValueAsString(result.citedHits().stream()
                     .map(hit -> Map.of(
                             "sectionId", hit.sectionId().toString(),
                             "pageId", hit.pageId().toString(),
@@ -143,7 +143,9 @@ public class TicketService {
                             "messageId", saved.id().toString(),
                             "tokens", tokens,
                             "citations", citations,
-                            "traceId", result.traceId()
+                            "traceId", result.traceId(),
+                            "retrieved", result.allHits().size(),
+                            "cited", result.citedHits().size()
                     ));
                 } else {
                     aiPartialCounter.increment();

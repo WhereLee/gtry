@@ -51,7 +51,11 @@ public class WikiAdminController {
             @RequestParam(defaultValue = "FACT") String kind
     ) {
         requirePlatformAdmin();
-        String normalized = "BLIND".equalsIgnoreCase(kind) ? "BLIND" : "FACT";
+        String normalized = switch (kind == null ? "" : kind.toUpperCase()) {
+            case "BLIND" -> "BLIND";
+            case "REAL" -> "REAL";
+            default -> "FACT";
+        };
         return evalService.start(Math.max(10, Math.min(sample, 2000)), normalized);
     }
 

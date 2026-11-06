@@ -139,6 +139,9 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8091/api/admin/questions/bl
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8091/api/admin/eval?sample=200&kind=BLIND" -Headers $ph
 ```
 
+真实问题盲测：见 [真实盲测](docs/真实盲测.md)，用 `tools\import-eval.ps1` 导入 CSV 后以 `kind=REAL` 评测。
+注入防护、引用裁剪、重试降级与评测口径见 [AI 可靠性](docs/AI可靠性.md)。
+
 索引状态与过期页面：
 
 ```powershell
@@ -260,9 +263,11 @@ helpdesk_vector_search_duration    pgvector 检索耗时
 helpdesk_rerank_duration           cross-encoder 重排耗时
 helpdesk_llm_duration              DeepSeek 流式生成耗时
 helpdesk_ai_stream_total{result}   done / partial / error
+helpdesk_llm_fallback_total        LLM 失败后的降级次数
+helpdesk_citation_missing_total    有检索结果但模型未标注引用
 ```
 
-本机实测（6 篇文档、topK=3）：embedding 34ms、检索 4ms、重排 142ms、LLM 2.8s。
+wiki 语料实测：embedding 15–20ms、向量检索 2–4ms、FTS 80–90ms、重排 170–210ms、LLM 2.8s。
 
 ## 已实现
 
@@ -272,7 +277,9 @@ helpdesk_ai_stream_total{result}   done / partial / error
 - 知识库：wiki 空间 / 页面 / 小节，页面 CRUD、可见性、负责人、复核时间、审计日志
 - 索引：小节级 BGE 向量 + bigram tsvector（GIN），页面编辑后增量重建
 - 检索：全文 + 向量混合召回 → RRF → 新鲜度加权 → BGE cross-encoder 重排
-- AI：DeepSeek 流式回复、引用来源、token 计量、断连时保留部分回答
+- AI：DeepSeek 流式回复、`[n]` 引用映射、token 计量、断连时保留部分回答
+- 安全：wiki 片段分隔/转义/可疑标记，降低提示词注入风险
+- 可用性：DeepSeek 失败前重试 1 次，仍失败时返回明确降级话术
 - 配额：租户级每分钟限流（Redis + Lua）、月度 token 预算
 - 用量：按租户统计 token 与成本
 - 可观测：Actuator、Micrometer、Prometheus
@@ -281,5 +288,5 @@ helpdesk_ai_stream_total{result}   done / partial / error
 
 - HNSW + 租户过滤在小规模下正常，租户很多时需要使用分区索引或迭代扫描
 - Redis Stream 索引队列暂未实现 PEL 重投（进程崩溃时可能丢索引任务）
-- 没有前端工作台；当前通过 API 和 SSE 验证
+- 前端是原生 JS 单页工作台，没有独立 SPA 工程和自动化浏览器回归
 - 没有接真实计费支付，只有用量计量

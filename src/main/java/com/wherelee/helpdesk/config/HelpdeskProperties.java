@@ -69,6 +69,7 @@ public class HelpdeskProperties {
         private String model = "deepseek-flash";
         private String effort = "low";
         private int timeoutSeconds = 60;
+        private int maxAttempts = 2;
 
         public String getProvider() {
             return provider;
@@ -116,6 +117,14 @@ public class HelpdeskProperties {
 
         public void setTimeoutSeconds(int timeoutSeconds) {
             this.timeoutSeconds = timeoutSeconds;
+        }
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = maxAttempts;
         }
     }
 

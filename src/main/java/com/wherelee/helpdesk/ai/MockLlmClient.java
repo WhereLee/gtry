@@ -45,7 +45,7 @@ public class MockLlmClient implements LlmClient {
             if (clean.length() > 220) {
                 clean = clean.substring(0, 220) + "…";
             }
-            sb.append("• ").append(clean).append('\n');
+            sb.append("• [").append(used + 1).append("] ").append(clean).append('\n');
             used++;
         }
         sb.append("\n以上信息供参考。如果和你的实际情况不一致，可以转人工客服继续处理。");

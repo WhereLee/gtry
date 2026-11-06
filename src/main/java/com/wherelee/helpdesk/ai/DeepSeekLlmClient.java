@@ -16,7 +16,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.io.UncheckedIOException;
 import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * DeepSeek is OpenAI-compatible: POST /chat/completions with stream=true and parse
@@ -26,6 +29,8 @@ import java.util.stream.Stream;
 @Component
 @ConditionalOnProperty(name = "helpdesk.llm.provider", havingValue = "deepseek")
 public class DeepSeekLlmClient implements LlmClient {
+
+    private static final Logger log = LoggerFactory.getLogger(DeepSeekLlmClient.class);
 
     private final HelpdeskProperties.Llm config;
     private final ObjectMapper objectMapper;
@@ -44,43 +49,71 @@ public class DeepSeekLlmClient implements LlmClient {
         if (config.getApiKey() == null || config.getApiKey().isBlank()) {
             throw new IllegalStateException("HELPDESK_LLM_API_KEY is not configured");
         }
-        try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("model", config.getModel());
-            payload.put("stream", true);
-            payload.put("messages", List.of(
-                    Map.of("role", "system", "content", request.systemPrompt()),
-                    Map.of("role", "user", "content", request.userPrompt())
-            ));
-            if (config.getEffort() != null && !config.getEffort().isBlank()) {
-                payload.put("reasoning_effort", config.getEffort());
+        int maxAttempts = Math.max(1, config.getMaxAttempts());
+        RuntimeException lastFailure = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            AtomicInteger emitted = new AtomicInteger();
+            Consumer<String> tracked = token -> {
+                emitted.incrementAndGet();
+                onToken.accept(token);
+            };
+            try {
+                return streamOnce(request, tracked);
+            } catch (UncheckedIOException | ClientDisconnectedException ex) {
+                // client disconnected while streaming; let the caller persist partial text
+                throw ex;
+            } catch (Exception ex) {
+                lastFailure = new IllegalStateException("deepseek request failed", ex);
+                // Retrying after tokens were emitted would duplicate the answer.
+                if (emitted.get() > 0 || attempt == maxAttempts) {
+                    throw lastFailure;
+                }
+                log.warn("helpdesk_llm_retry attempt={} error={}", attempt, ex.getMessage());
+                sleep(300L * attempt);
             }
-            payload.put("stream_options", Map.of("include_usage", true));
-            String body = objectMapper.writeValueAsString(payload);
-            HttpRequest httpRequest = HttpRequest.newBuilder(
-                            URI.create(trimSlash(config.getBaseUrl()) + "/chat/completions"))
-                    .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + config.getApiKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
+        }
+        throw lastFailure == null ? new IllegalStateException("deepseek request failed") : lastFailure;
+    }
 
-            HttpResponse<Stream<String>> response = httpClient.send(
-                    httpRequest, HttpResponse.BodyHandlers.ofLines());
-            if (response.statusCode() != 200) {
-                throw new IllegalStateException("deepseek failed: HTTP " + response.statusCode());
-            }
-            int[] usage = {0};
-            StringBuilder collected = new StringBuilder();
-            try (Stream<String> lines = response.body()) {
-                lines.forEach(line -> consume(line, onToken, collected, usage));
-            }
-            return usage[0] > 0 ? usage[0] : Math.max(1, collected.length() / 2);
-        } catch (UncheckedIOException | ClientDisconnectedException ex) {
-            // client disconnected while streaming; let the caller persist partial text
-            throw ex;
-        } catch (Exception ex) {
-            throw new IllegalStateException("deepseek request failed", ex);
+    private int streamOnce(LlmRequest request, Consumer<String> onToken) throws Exception {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("model", config.getModel());
+        payload.put("stream", true);
+        payload.put("messages", List.of(
+                Map.of("role", "system", "content", request.systemPrompt()),
+                Map.of("role", "user", "content", request.userPrompt())
+        ));
+        if (config.getEffort() != null && !config.getEffort().isBlank()) {
+            payload.put("reasoning_effort", config.getEffort());
+        }
+        payload.put("stream_options", Map.of("include_usage", true));
+        String body = objectMapper.writeValueAsString(payload);
+        HttpRequest httpRequest = HttpRequest.newBuilder(
+                        URI.create(trimSlash(config.getBaseUrl()) + "/chat/completions"))
+                .timeout(Duration.ofSeconds(config.getTimeoutSeconds()))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + config.getApiKey())
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<Stream<String>> response = httpClient.send(
+                httpRequest, HttpResponse.BodyHandlers.ofLines());
+        if (response.statusCode() != 200) {
+            throw new IllegalStateException("deepseek failed: HTTP " + response.statusCode());
+        }
+        int[] usage = {0};
+        StringBuilder collected = new StringBuilder();
+        try (Stream<String> lines = response.body()) {
+            lines.forEach(line -> consume(line, onToken, collected, usage));
+        }
+        return usage[0] > 0 ? usage[0] : Math.max(1, collected.length() / 2);
+    }
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
         }
     }
 

@@ -93,4 +93,12 @@ public class WikiController {
     public java.util.Map<String, Object> reindex(@PathVariable UUID id) {
         return java.util.Map.of("sections", pageService.reindex(id));
     }
+
+    @PostMapping("/api/wiki/questions/import")
+    public java.util.Map<String, Object> importQuestions(
+            @RequestParam(defaultValue = "true") boolean replace,
+            @Valid @RequestBody List<WikiPageDtos.ImportQuestion> questions
+    ) {
+        return java.util.Map.of("questions", pageService.importQuestions(questions, replace), "kind", "REAL");
+    }
 }

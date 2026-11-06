@@ -256,6 +256,12 @@ public class WikiRepository {
                 UUID.class, pageId);
     }
 
+    public Optional<UUID> findFirstSectionId(UUID pageId) {
+        return jdbc.queryForList(
+                "SELECT id FROM wiki_section WHERE page_id = ? ORDER BY seq LIMIT 1",
+                UUID.class, pageId).stream().findFirst();
+    }
+
     public int deletePage(UUID pageId) {
         return jdbc.update("DELETE FROM wiki_page WHERE id = ?", pageId);
     }

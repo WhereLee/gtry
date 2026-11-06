@@ -40,6 +40,7 @@ helpdesk:
     api-key: ${HELPDESK_LLM_API_KEY:}
     model: ${HELPDESK_LLM_MODEL:deepseek-flash}
     effort: ${HELPDESK_LLM_EFFORT:low}
+    max-attempts: ${HELPDESK_LLM_MAX_ATTEMPTS:2}
     timeout-seconds: ${HELPDESK_LLM_TIMEOUT_SECONDS:60}
   embedding:
     provider: ${HELPDESK_EMBEDDING_PROVIDER:onnx}
