@@ -3,6 +3,8 @@ package com.wherelee.helpdesk.ticket;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wherelee.helpdesk.ai.RagService;
 import com.wherelee.helpdesk.ai.ClientDisconnectedException;
+import com.wherelee.helpdesk.ai.AiFeedbackRepository;
+import com.wherelee.helpdesk.events.AiFeedbackAcceptedEvent;
 import com.wherelee.helpdesk.quota.QuotaService;
 import com.wherelee.helpdesk.tenant.TenantContext;
 import com.wherelee.helpdesk.tenant.TenantScope;
@@ -12,6 +14,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -21,6 +24,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -33,6 +37,8 @@ public class TicketService {
     private final TicketRepository tickets;
     private final TicketTriageService triageService;
     private final UserRepository users;
+    private final AiFeedbackRepository feedbackRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final RagService ragService;
     private final QuotaService quotaService;
     private final ObjectMapper objectMapper;
@@ -45,6 +51,8 @@ public class TicketService {
             TicketRepository tickets,
             TicketTriageService triageService,
             UserRepository users,
+            AiFeedbackRepository feedbackRepository,
+            ApplicationEventPublisher eventPublisher,
             RagService ragService,
             QuotaService quotaService,
             ObjectMapper objectMapper,
@@ -54,6 +62,8 @@ public class TicketService {
         this.tickets = tickets;
         this.triageService = triageService;
         this.users = users;
+        this.feedbackRepository = feedbackRepository;
+        this.eventPublisher = eventPublisher;
         this.ragService = ragService;
         this.quotaService = quotaService;
         this.objectMapper = objectMapper;
@@ -64,6 +74,13 @@ public class TicketService {
     }
 
     public TicketDtos.TicketView create(String subject, String description, String priority) {
+        return create(subject, description, priority, null, null);
+    }
+
+    public TicketDtos.TicketView create(
+            String subject, String description, String priority,
+            String customerName, String customerEmail
+    ) {
         TenantScope scope = requireScope();
         TicketTriageService.TriageResult triage = triageService.triage(
                 subject, description, scope.tenantId());
@@ -72,7 +89,8 @@ public class TicketService {
                 : priority.toUpperCase();
         Ticket ticket = tickets.create(
                 scope.tenantId(), subject, description, effectivePriority,
-                triage.category(), triage.source(), triage.reason(), triage.assigneeId());
+                triage.category(), triage.source(), triage.reason(), triage.assigneeId(),
+                customerName, customerEmail);
         tickets.addMessage(scope.tenantId(), ticket.id(), "CUSTOMER", null, description, "[]", 0);
         return TicketDtos.TicketView.of(ticket);
     }
@@ -102,6 +120,62 @@ public class TicketService {
             tickets.touch(id);
         }
         return TicketDtos.MessageView.of(message);
+    }
+
+    public TicketDtos.MessageView addInternalNote(UUID id, String content) {
+        TenantScope scope = requireScope();
+        tickets.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ticket_not_found"));
+        TicketMessage message = tickets.addMessage(
+                scope.tenantId(), id, "AGENT", scope.userId(), content, "[]", 0, "INTERNAL");
+        tickets.touch(id);
+        return TicketDtos.MessageView.of(message);
+    }
+
+    public TicketDtos.FeedbackView feedback(
+            UUID ticketId, UUID messageId, TicketDtos.FeedbackRequest request) {
+        TenantScope scope = requireScope();
+        Ticket ticket = tickets.findById(ticketId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ticket_not_found"));
+        TicketMessage message = tickets.findMessage(ticketId, messageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "message_not_found"));
+        if (!"AI".equals(message.authorType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "not_ai_message");
+        }
+        String action = request.action().toUpperCase(Locale.ROOT);
+        if (!List.of("ADOPT", "EDIT", "REJECT").contains(action)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_feedback_action");
+        }
+        String edited = null;
+        if ("ADOPT".equals(action)) {
+            tickets.addMessage(
+                    scope.tenantId(), ticketId, "AGENT", scope.userId(),
+                    message.content(), "[]", 0, "PUBLIC");
+            if (!"PENDING".equals(ticket.status())) {
+                tickets.updateStatus(ticketId, "PENDING");
+            }
+        } else if ("EDIT".equals(action)) {
+            if (request.editedContent() == null || request.editedContent().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "edited_content_required");
+            }
+            edited = request.editedContent().trim();
+            tickets.addMessage(
+                    scope.tenantId(), ticketId, "AGENT", scope.userId(),
+                    edited, "[]", 0, "PUBLIC");
+            if (!"PENDING".equals(ticket.status())) {
+                tickets.updateStatus(ticketId, "PENDING");
+            }
+        }
+        feedbackRepository.insert(
+                scope.tenantId(), ticketId, messageId, scope.userId(),
+                action, message.content(), edited);
+        if (List.of("ADOPT", "EDIT").contains(action)) {
+            eventPublisher.publishEvent(new AiFeedbackAcceptedEvent(
+                    scope.tenantId(), ticketId, messageId, action,
+                    ticket.subject() + "\n" + ticket.description(),
+                    message.citationsJson()));
+        }
+        return new TicketDtos.FeedbackView(action, messageId);
     }
 
     public TicketDtos.TicketView retriage(UUID id) {
@@ -189,7 +263,7 @@ public class TicketService {
             if (!buffer.text().isBlank()) {
                 TicketMessage saved = tickets.addMessage(
                         scope.tenantId(), ticketId, "AI", null,
-                        buffer.text(), citations, tokens);
+                        buffer.text(), citations, tokens, "INTERNAL");
                 tickets.touch(ticketId);
                 quotaService.recordUsage(scope.tenantId(), "ai_reply", tokens);
                 if (result.tokens() > 0) {

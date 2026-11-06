@@ -12,6 +12,7 @@ public class HelpdeskProperties {
     private final Quota quota = new Quota();
     private final Rerank rerank = new Rerank();
     private final Wiki wiki = new Wiki();
+    private final PublicPortal publicPortal = new PublicPortal();
 
     public Jwt getJwt() {
         return jwt;
@@ -39,6 +40,10 @@ public class HelpdeskProperties {
 
     public Wiki getWiki() {
         return wiki;
+    }
+
+    public PublicPortal getPublicPortal() {
+        return publicPortal;
     }
 
     public static class Jwt {
@@ -329,6 +334,27 @@ public class HelpdeskProperties {
 
         public void setIncludeInternalDefault(boolean includeInternalDefault) {
             this.includeInternalDefault = includeInternalDefault;
+        }
+    }
+
+    public static class PublicPortal {
+        private int rateLimitPerMinute = 20;
+        private int tokenTtlDays = 30;
+
+        public int getRateLimitPerMinute() {
+            return rateLimitPerMinute;
+        }
+
+        public void setRateLimitPerMinute(int rateLimitPerMinute) {
+            this.rateLimitPerMinute = rateLimitPerMinute;
+        }
+
+        public int getTokenTtlDays() {
+            return tokenTtlDays;
+        }
+
+        public void setTokenTtlDays(int tokenTtlDays) {
+            this.tokenTtlDays = tokenTtlDays;
         }
     }
 }

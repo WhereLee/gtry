@@ -62,6 +62,12 @@ java -jar target\helpdesk-0.1.0.jar
 AI 流式建议和引用来源；顶部可以切到“知识库”做 wiki 页面维护和检索测试。
 无需前端构建步骤。
 
+客户门户：`http://127.0.0.1:8091/portal.html?channel=acme-demo-key`
+（cloudwise 用 `cloudwise-demo-key`）。客户提交后拿到工单 ID 和查询码，
+可以查询进度、追加回复，工单关闭后提交 CSAT。
+
+API 文档：`http://127.0.0.1:8091/swagger-ui.html`，OpenAPI JSON 在 `/v3/api-docs`。
+
 ## Docker 部署
 
 `deploy/` 下是一套可直接上服务器的 Compose：
@@ -267,6 +273,7 @@ helpdesk_llm_duration              DeepSeek 流式生成耗时
 helpdesk_ai_stream_total{result}   done / partial / error
 helpdesk_llm_fallback_total        LLM 失败后的降级次数
 helpdesk_citation_missing_total    有检索结果但模型未标注引用
+helpdesk_pii_redacted_total        发送 LLM 前发生 PII 脱敏的次数
 ```
 
 wiki 语料实测：embedding 15–20ms、向量检索 2–4ms、FTS 80–90ms、重排 170–210ms、LLM 2.8s。
@@ -278,10 +285,13 @@ wiki 语料实测：embedding 15–20ms、向量检索 2–4ms、FTS 80–90ms�
 - 分诊：规则分类、优先级、按坐席负载路由、人工调整与重新分诊
 - 工作台：登录、工单列表、新建、AI 流式建议、引用展示
 - 人工闭环：客服回复框，回复后工单进入处理中
+- 客户闭环：公开工单入口、查询码、客户追加回复、CSAT、内部备注
+- 团队管理：租户管理员创建坐席、调整角色、停用账号
 - 知识库：wiki 空间 / 页面 / 小节，页面 CRUD、可见性、负责人、复核时间、审计日志
 - 索引：小节级 BGE 向量 + bigram tsvector（GIN），页面编辑后增量重建
 - 检索：全文 + 向量混合召回 → RRF → 新鲜度加权 → BGE cross-encoder 重排
 - AI：DeepSeek 流式回复、`[n]` 引用映射、token 计量、断连时保留部分回答
+- AI 闭环：建议采纳/修改/驳回、反馈入库、PII 脱敏
 - 安全：wiki 片段分隔/转义/可疑标记，降低提示词注入风险
 - 可用性：DeepSeek 失败前重试 1 次，仍失败时返回明确降级话术
 - 配额：租户级每分钟限流（Redis + Lua）、月度 token 预算

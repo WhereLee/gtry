@@ -39,6 +39,7 @@ public class RagService {
     private final Timer llmTimer;
     private final Counter fallbackCounter;
     private final Counter citationMissingCounter;
+    private final Counter piiRedactionCounter;
 
     public RagService(
             WikiSearchService searchService,
@@ -54,6 +55,7 @@ public class RagService {
                 .publishPercentiles(0.5, 0.95, 0.99).register(meterRegistry);
         this.fallbackCounter = meterRegistry.counter("helpdesk_llm_fallback_total");
         this.citationMissingCounter = meterRegistry.counter("helpdesk_citation_missing_total");
+        this.piiRedactionCounter = meterRegistry.counter("helpdesk_pii_redacted_total");
     }
 
     public List<WikiHit> retrieve(String question) {
@@ -62,8 +64,12 @@ public class RagService {
     }
 
     public RagResult answer(String question, Consumer<String> onToken) {
+        String safeQuestion = PiiRedactor.redact(question);
+        if (!safeQuestion.equals(question)) {
+            piiRedactionCounter.increment();
+        }
         WikiSearchResult search = searchService.search(
-                question, config.getTopK(), wikiConfig.isIncludeInternalDefault());
+                safeQuestion, config.getTopK(), wikiConfig.isIncludeInternalDefault());
         List<WikiHit> hits = search.hits();
 
         StringBuilder userPrompt = new StringBuilder("【知识库片段】\n");
@@ -75,7 +81,7 @@ public class RagService {
         if (hits.isEmpty()) {
             userPrompt.append("（没有检索到相关片段）\n");
         }
-        userPrompt.append("\n【客户问题】\n").append(question);
+        userPrompt.append("\n【客户问题】\n").append(safeQuestion);
 
         StringBuilder answer = new StringBuilder();
         Consumer<String> sink = token -> {

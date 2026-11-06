@@ -52,3 +52,15 @@ powershell -File tools\import-eval.ps1 -Tenant acme -Csv docs\真实盲测模板
 | `helpdesk_citation_missing_total` | 有召回但模型未标注引用 |
 | `helpdesk_eval_tenant` | 单租户 recall / MRR / nDCG |
 | SSE `done.retrieved` / `done.cited` | 单次回答的召回与引用数量 |
+
+## 6. 反馈闭环与 PII 脱敏
+
+- 坐席对 AI 建议执行 `采纳 / 修改后发送 / 驳回`，写入 `ai_feedback`；
+- `采纳` 会把 AI 文本作为 `AGENT` 公开消息发送；
+- `修改` 保存修改后的文本，并保留原始 AI 文本用于后续分析；
+- `驳回` 只记录反馈，不发送消息；
+- 采纳/修改会发布领域事件，把“客户问题 → 引用页面”写入 `eval_question(kind=FEEDBACK)`，
+  之后可以用 `POST /api/admin/eval?kind=FEEDBACK` 回归；
+- 发送 LLM 前用 `PiiRedactor` 脱敏手机号、邮箱、身份证、银行卡和订单号，
+  原始内容仍保留在工单中，坐席可见；
+- 脱敏次数记录为 `helpdesk_pii_redacted_total`。

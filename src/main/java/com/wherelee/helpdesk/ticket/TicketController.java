@@ -52,6 +52,24 @@ public class TicketController {
         return ticketService.addMessage(id, request.content());
     }
 
+    @PostMapping("/{id}/notes")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TicketDtos.MessageView addInternalNote(
+            @PathVariable UUID id,
+            @Valid @RequestBody TicketDtos.AddMessageRequest request
+    ) {
+        return ticketService.addInternalNote(id, request.content());
+    }
+
+    @PostMapping("/{id}/messages/{messageId}/feedback")
+    public TicketDtos.FeedbackView feedback(
+            @PathVariable UUID id,
+            @PathVariable UUID messageId,
+            @Valid @RequestBody TicketDtos.FeedbackRequest request
+    ) {
+        return ticketService.feedback(id, messageId, request);
+    }
+
     @PatchMapping("/{id}/status")
     public TicketDtos.TicketView updateStatus(@PathVariable UUID id, @RequestParam String status) {
         return ticketService.updateStatus(id, status);

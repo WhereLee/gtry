@@ -31,6 +31,18 @@ public final class TicketDtos {
     ) {
     }
 
+    public record FeedbackRequest(
+            @NotBlank String action,
+            @Size(max = 20000) String editedContent
+    ) {
+    }
+
+    public record FeedbackView(
+            String action,
+            UUID messageId
+    ) {
+    }
+
     public record TicketView(
             UUID id,
             String subject,
@@ -40,6 +52,11 @@ public final class TicketDtos {
             String category,
             String triageSource,
             String triageReason,
+            String customerName,
+            String customerEmail,
+            Integer csatRating,
+            String csatComment,
+            Instant csatAt,
             UUID assigneeId,
             Instant createdAt,
             Instant updatedAt
@@ -48,6 +65,8 @@ public final class TicketDtos {
             return new TicketView(
                     ticket.id(), ticket.subject(), ticket.description(), ticket.status(),
                     ticket.priority(), ticket.category(), ticket.triageSource(), ticket.triageReason(),
+                    ticket.customerName(), ticket.customerEmail(),
+                    ticket.csatRating(), ticket.csatComment(), ticket.csatAt(),
                     ticket.assigneeId(), ticket.createdAt(), ticket.updatedAt()
             );
         }
@@ -58,6 +77,7 @@ public final class TicketDtos {
             String authorType,
             UUID authorId,
             String content,
+            String visibility,
             String citations,
             int tokens,
             Instant createdAt
@@ -65,7 +85,7 @@ public final class TicketDtos {
         public static MessageView of(TicketMessage message) {
             return new MessageView(
                     message.id(), message.authorType(), message.authorId(), message.content(),
-                    message.citationsJson(), message.tokens(), message.createdAt()
+                    message.visibility(), message.citationsJson(), message.tokens(), message.createdAt()
             );
         }
     }

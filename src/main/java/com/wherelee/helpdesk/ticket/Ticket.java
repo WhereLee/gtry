@@ -15,6 +15,11 @@ public record Ticket(
         String category,
         String triageSource,
         String triageReason,
+        String customerName,
+        String customerEmail,
+        Integer csatRating,
+        String csatComment,
+        Instant csatAt,
         UUID assigneeId,
         Instant createdAt,
         Instant updatedAt

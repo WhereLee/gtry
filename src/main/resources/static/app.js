@@ -21,6 +21,7 @@ const state = {
     wikiPageId: null,
     agents: [],
     platformTenants: [],
+    teamUsers: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -98,6 +99,10 @@ async function enterApp() {
     }
     $('who-tenant').textContent = state.user.tenantSlug;
     $('who-user').textContent = `${state.user.displayName} · ${state.user.role}`;
+    const channelKey = state.user.tenantSlug === 'cloudwise' ? 'cloudwise-demo-key' : 'acme-demo-key';
+    $('portal-link').href = `/portal.html?channel=${channelKey}`;
+    $('portal-link').classList.toggle('hidden', state.user.role === 'PLATFORM_ADMIN');
+    $('tab-team').classList.toggle('hidden', state.user.role !== 'TENANT_ADMIN');
     $('tab-platform').classList.toggle('hidden', state.user.role !== 'PLATFORM_ADMIN');
     initTriageOptions();
     await Promise.all([loadUsage(), loadTickets(), loadAgents()]);
@@ -200,13 +205,29 @@ async function openTicket(id) {
     $('empty-detail').classList.add('hidden');
     $('ticket-panel').classList.remove('hidden');
     $('ticket-subject').textContent = detail.ticket.subject;
+    const customer = [detail.ticket.customerName, detail.ticket.customerEmail]
+        .filter(Boolean).join(' · ');
     $('ticket-meta').textContent =
         `${detail.ticket.status} · ${priorityLabel(detail.ticket.priority)} · ` +
-        `${categoryLabel(detail.ticket.category)} · ${new Date(detail.ticket.createdAt).toLocaleString()}`;
+        `${categoryLabel(detail.ticket.category)}` +
+        `${customer ? ' · ' + customer : ''} · ${new Date(detail.ticket.createdAt).toLocaleString()}`;
     renderTriage(detail.ticket);
+    renderCsat(detail.ticket);
     renderMessages(detail.messages);
     $('citations').classList.add('hidden');
     $('reply-content').value = '';
+    $('internal-note').checked = false;
+}
+
+function renderCsat(ticket) {
+    const box = $('ticket-csat');
+    if (ticket.csatRating) {
+        box.classList.remove('hidden');
+        $('ticket-csat-value').textContent = `${ticket.csatRating}/5`;
+        $('ticket-csat-comment').textContent = ticket.csatComment || '';
+    } else {
+        box.classList.add('hidden');
+    }
 }
 
 function renderTriage(ticket) {
@@ -250,12 +271,17 @@ async function sendReply(event) {
     if (!state.activeId) return;
     const content = $('reply-content').value.trim();
     if (!content) return;
-    await api(`/api/tickets/${state.activeId}/messages`, {
+    const internal = $('internal-note').checked;
+    const endpoint = internal
+        ? `/api/tickets/${state.activeId}/notes`
+        : `/api/tickets/${state.activeId}/messages`;
+    await api(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
     });
     $('reply-content').value = '';
+    $('internal-note').checked = false;
     await loadTickets();
     await openTicket(state.activeId);
 }
@@ -264,18 +290,21 @@ function renderMessages(messages) {
     const container = $('messages');
     container.innerHTML = '';
     for (const message of messages) {
-        container.appendChild(messageNode(message.authorType, message.content, message.tokens));
+        container.appendChild(messageNode(
+            message.authorType, message.content, message.tokens, message.visibility));
     }
     container.scrollTop = container.scrollHeight;
 }
 
-function messageNode(authorType, content, tokens) {
+function messageNode(authorType, content, tokens, visibility = 'PUBLIC') {
     const node = document.createElement('div');
     const kind = authorType.toLowerCase();
-    node.className = `msg ${kind}`;
+    node.className = `msg ${kind}` + (visibility === 'INTERNAL' ? ' internal' : '');
     const meta = document.createElement('div');
     meta.className = 'meta';
-    meta.textContent = authorType + (tokens ? ` · ${tokens} tokens` : '');
+    meta.textContent = authorType +
+        (visibility === 'INTERNAL' ? ' · 内部备注' : '') +
+        (tokens ? ` · ${tokens} tokens` : '');
     const body = document.createElement('div');
     body.textContent = content;
     node.append(meta, body);
@@ -296,6 +325,7 @@ async function suggest() {
     container.scrollTop = container.scrollHeight;
 
     let citations = [];
+    let doneEvent = null;
     try {
         const response = await fetch(`/api/tickets/${state.activeId}/ai-suggest`, {
             method: 'POST',
@@ -315,8 +345,9 @@ async function suggest() {
             while ((index = buffer.indexOf('\n\n')) >= 0) {
                 const chunk = buffer.slice(0, index);
                 buffer = buffer.slice(index + 2);
-                handleEvent(chunk, body, (doneEvent) => {
-                    citations = JSON.parse(doneEvent.citations || '[]');
+                handleEvent(chunk, body, (event) => {
+                    doneEvent = event;
+                    citations = JSON.parse(event.citations || '[]');
                 });
                 container.scrollTop = container.scrollHeight;
             }
@@ -328,8 +359,47 @@ async function suggest() {
         button.disabled = false;
         button.textContent = 'AI 建议回复';
         renderCitations(citations);
+        if (doneEvent) {
+            renderAiActions(node, body, doneEvent);
+        }
         await loadUsage();
     }
+}
+
+function renderAiActions(node, body, doneEvent) {
+    if (!doneEvent || !doneEvent.messageId) return;
+    const actions = document.createElement('div');
+    actions.className = 'ai-actions';
+
+    const adopt = document.createElement('button');
+    adopt.textContent = '采纳';
+    adopt.onclick = () => feedback(doneEvent.messageId, 'ADOPT', null).catch(showApiError);
+
+    const edit = document.createElement('button');
+    edit.textContent = '修改后发送';
+    edit.onclick = () => {
+        const edited = prompt('修改后发送：', body.textContent);
+        if (edited && edited.trim()) {
+            feedback(doneEvent.messageId, 'EDIT', edited.trim()).catch(showApiError);
+        }
+    };
+
+    const reject = document.createElement('button');
+    reject.textContent = '驳回';
+    reject.onclick = () => feedback(doneEvent.messageId, 'REJECT', null).catch(showApiError);
+
+    actions.append(adopt, edit, reject);
+    node.appendChild(actions);
+}
+
+async function feedback(messageId, action, editedContent) {
+    await api(`/api/tickets/${state.activeId}/messages/${messageId}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, editedContent }),
+    });
+    await loadTickets();
+    await openTicket(state.activeId);
 }
 
 function handleEvent(chunk, body, onDone) {
@@ -378,20 +448,28 @@ function switchTab(tab) {
     if (tab === 'platform' && (!state.user || state.user.role !== 'PLATFORM_ADMIN')) {
         tab = 'tickets';
     }
+    if (tab === 'team' && (!state.user || state.user.role !== 'TENANT_ADMIN')) {
+        tab = 'tickets';
+    }
     state.tab = tab;
     $('tickets-view').classList.toggle('hidden', tab !== 'tickets');
     $('wiki-view').classList.toggle('hidden', tab !== 'wiki');
     $('usage-view').classList.toggle('hidden', tab !== 'usage');
+    $('team-view').classList.toggle('hidden', tab !== 'team');
     $('platform-view').classList.toggle('hidden', tab !== 'platform');
     $('tab-tickets').classList.toggle('active', tab === 'tickets');
     $('tab-wiki').classList.toggle('active', tab === 'wiki');
     $('tab-usage').classList.toggle('active', tab === 'usage');
+    $('tab-team').classList.toggle('active', tab === 'team');
     $('tab-platform').classList.toggle('active', tab === 'platform');
     if (tab === 'wiki' && !state.wikiSpaces.length) {
         loadWikiSpaces().catch(showApiError);
     }
     if (tab === 'usage') {
         loadUsagePanel().catch(showApiError);
+    }
+    if (tab === 'team') {
+        loadTeam().catch(showApiError);
     }
     if (tab === 'platform') {
         loadPlatform().catch(showApiError);
@@ -799,6 +877,82 @@ async function createTenant(event) {
     await loadPlatform();
 }
 
+async function loadTeam() {
+    state.teamUsers = await api('/api/users');
+    renderTeam();
+}
+
+function renderTeam() {
+    const body = $('team-table');
+    body.innerHTML = '';
+    for (const user of state.teamUsers) {
+        const row = document.createElement('tr');
+
+        const nameCell = document.createElement('td');
+        nameCell.innerHTML = '<div class="title"></div><div class="muted small"></div>';
+        nameCell.querySelector('.title').textContent = user.displayName;
+        nameCell.querySelector('.muted').textContent = user.email;
+
+        const roleCell = document.createElement('td');
+        const roleSelect = document.createElement('select');
+        for (const role of ['AGENT', 'TENANT_ADMIN']) {
+            const option = document.createElement('option');
+            option.value = role;
+            option.textContent = role;
+            roleSelect.appendChild(option);
+        }
+        roleSelect.value = user.role;
+        roleCell.appendChild(roleSelect);
+
+        const statusCell = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `badge ${user.status === 'ACTIVE' ? 'active' : 'suspended'}`;
+        badge.textContent = user.status;
+        statusCell.appendChild(badge);
+
+        const actions = document.createElement('td');
+        actions.className = 'actions';
+        const saveRole = document.createElement('button');
+        saveRole.textContent = '保存角色';
+        saveRole.onclick = () => updateTeamUser(user.id, { role: roleSelect.value }).catch(showApiError);
+        const toggle = document.createElement('button');
+        toggle.textContent = user.status === 'ACTIVE' ? '停用' : '启用';
+        toggle.onclick = () => updateTeamUser(
+            user.id, { status: user.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE' }).catch(showApiError);
+        actions.append(saveRole, toggle);
+
+        row.append(nameCell, roleCell, statusCell, actions);
+        body.appendChild(row);
+    }
+}
+
+async function createTeamUser(event) {
+    event.preventDefault();
+    const payload = {
+        email: $('team-email').value.trim(),
+        displayName: $('team-name').value.trim(),
+        role: $('team-role').value,
+        password: $('team-password').value,
+    };
+    await api('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    $('team-form').reset();
+    $('team-role').value = 'AGENT';
+    await loadTeam();
+}
+
+async function updateTeamUser(id, payload) {
+    await api(`/api/users/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    await loadTeam();
+}
+
 function showApiError(error) {
     let message = error && error.message ? error.message : '请求失败';
     try {
@@ -825,6 +979,18 @@ function showApiError(error) {
     if (message.includes('cannot_suspend_platform')) {
         message = '平台租户不能停用';
     }
+    if (message.includes('user_exists')) {
+        message = '该邮箱已存在';
+    }
+    if (message.includes('invalid_role')) {
+        message = '角色只能是 AGENT 或 TENANT_ADMIN';
+    }
+    if (message.includes('cannot_disable_self')) {
+        message = '不能停用当前登录账号';
+    }
+    if (message.includes('last_tenant_admin')) {
+        message = '至少保留一个启用的租户管理员';
+    }
     alert(message);
 }
 
@@ -837,6 +1003,7 @@ $('logout').addEventListener('click', logout);
 $('tab-tickets').addEventListener('click', () => switchTab('tickets'));
 $('tab-wiki').addEventListener('click', () => switchTab('wiki'));
 $('tab-usage').addEventListener('click', () => switchTab('usage'));
+$('tab-team').addEventListener('click', () => switchTab('team'));
 $('tab-platform').addEventListener('click', () => switchTab('platform'));
 $('reply-form').addEventListener('submit', (event) => sendReply(event).catch(showApiError));
 $('reply-content').addEventListener('keydown', (event) => {
@@ -849,6 +1016,8 @@ $('triage-apply').addEventListener('click', () => applyTriage().catch(showApiErr
 $('usage-refresh').addEventListener('click', () => loadUsagePanel().catch(showApiError));
 $('platform-refresh').addEventListener('click', () => loadPlatform().catch(showApiError));
 $('tenant-form').addEventListener('submit', (event) => createTenant(event).catch(showApiError));
+$('team-refresh').addEventListener('click', () => loadTeam().catch(showApiError));
+$('team-form').addEventListener('submit', (event) => createTeamUser(event).catch(showApiError));
 $('new-page').addEventListener('click', newWikiPage);
 $('add-section').addEventListener('click', () => addSectionCard());
 $('wiki-save').addEventListener('click', () => saveWikiPage().catch(showApiError));

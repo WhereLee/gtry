@@ -25,6 +25,11 @@ public class TicketRepository {
             rs.getString("category"),
             rs.getString("triage_source"),
             rs.getString("triage_reason"),
+            rs.getString("customer_name"),
+            rs.getString("customer_email"),
+            rs.getObject("csat_rating", Integer.class),
+            rs.getString("csat_comment"),
+            rs.getTimestamp("csat_at") == null ? null : rs.getTimestamp("csat_at").toInstant(),
             rs.getObject("assignee_id", UUID.class),
             rs.getTimestamp("created_at").toInstant(),
             rs.getTimestamp("updated_at").toInstant()
@@ -37,6 +42,7 @@ public class TicketRepository {
             rs.getString("author_type"),
             rs.getObject("author_id", UUID.class),
             rs.getString("content"),
+            rs.getString("visibility"),
             rs.getString("citations"),
             rs.getInt("tokens"),
             rs.getTimestamp("created_at").toInstant()
@@ -50,24 +56,27 @@ public class TicketRepository {
 
     public Ticket create(
             UUID tenantId, String subject, String description, String priority,
-            String category, String triageSource, String triageReason, UUID assigneeId
+            String category, String triageSource, String triageReason, UUID assigneeId,
+            String customerName, String customerEmail
     ) {
         return jdbc.queryForObject("""
                 INSERT INTO ticket
                     (tenant_id, subject, description, priority, category,
-                     triage_source, triage_reason, assignee_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     triage_source, triage_reason, assignee_id, customer_name, customer_email)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id, tenant_id, channel_id, external_ref, subject, description,
                           status, priority, category, triage_source, triage_reason,
+                          customer_name, customer_email, csat_rating, csat_comment, csat_at,
                           assignee_id, created_at, updated_at
                 """, MAPPER, tenantId, subject, description, priority, category,
-                triageSource, triageReason, assigneeId);
+                triageSource, triageReason, assigneeId, customerName, customerEmail);
     }
 
     public Optional<Ticket> findById(UUID id) {
         return jdbc.query("""
                 SELECT id, tenant_id, channel_id, external_ref, subject, description,
                        status, priority, category, triage_source, triage_reason,
+                       customer_name, customer_email, csat_rating, csat_comment, csat_at,
                        assignee_id, created_at, updated_at
                 FROM ticket WHERE id = ?
                 """, MAPPER, id).stream().findFirst();
@@ -78,6 +87,7 @@ public class TicketRepository {
             return jdbc.query("""
                     SELECT id, tenant_id, channel_id, external_ref, subject, description,
                            status, priority, category, triage_source, triage_reason,
+                           customer_name, customer_email, csat_rating, csat_comment, csat_at,
                            assignee_id, created_at, updated_at
                     FROM ticket ORDER BY created_at DESC LIMIT ?
                     """, MAPPER, limit);
@@ -85,6 +95,7 @@ public class TicketRepository {
         return jdbc.query("""
                 SELECT id, tenant_id, channel_id, external_ref, subject, description,
                        status, priority, category, triage_source, triage_reason,
+                       customer_name, customer_email, csat_rating, csat_comment, csat_at,
                        assignee_id, created_at, updated_at
                 FROM ticket WHERE status = ? ORDER BY created_at DESC LIMIT ?
                 """, MAPPER, status, limit);
@@ -106,6 +117,22 @@ public class TicketRepository {
                     triage_source = ?, triage_reason = ?, updated_at = now()
                 WHERE id = ?
                 """, category, priority, assigneeId, source, reason, id) > 0;
+    }
+
+    public boolean setCustomerToken(UUID ticketId, String tokenHash, Instant expiresAt) {
+        return jdbc.update("""
+                UPDATE ticket
+                SET customer_token_hash = ?, customer_token_expires_at = ?, updated_at = now()
+                WHERE id = ?
+                """, tokenHash, Timestamp.from(expiresAt), ticketId) > 0;
+    }
+
+    public boolean updateCsat(UUID ticketId, int rating, String comment) {
+        return jdbc.update("""
+                UPDATE ticket
+                SET csat_rating = ?, csat_comment = ?, csat_at = now(), updated_at = now()
+                WHERE id = ?
+                """, rating, comment, ticketId) > 0;
     }
 
     public Optional<UUID> findLeastLoadedAgent(UUID tenantId) {
@@ -132,21 +159,54 @@ public class TicketRepository {
             String citationsJson,
             int tokens
     ) {
+        return addMessage(tenantId, ticketId, authorType, authorId, content, citationsJson, tokens, "PUBLIC");
+    }
+
+    public TicketMessage addMessage(
+            UUID tenantId,
+            UUID ticketId,
+            String authorType,
+            UUID authorId,
+            String content,
+            String citationsJson,
+            int tokens,
+            String visibility
+    ) {
         return jdbc.queryForObject("""
                 INSERT INTO ticket_message
-                    (tenant_id, ticket_id, author_type, author_id, content, citations, tokens)
-                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?)
+                    (tenant_id, ticket_id, author_type, author_id, content, visibility, citations, tokens)
+                VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?)
                 RETURNING id, tenant_id, ticket_id, author_type, author_id,
-                          content, citations::text AS citations, tokens, created_at
-                """, MESSAGE_MAPPER, tenantId, ticketId, authorType, authorId, content, citationsJson, tokens);
+                          content, visibility, citations::text AS citations, tokens, created_at
+                """, MESSAGE_MAPPER, tenantId, ticketId, authorType, authorId, content,
+                visibility, citationsJson, tokens);
     }
 
     public List<TicketMessage> listMessages(UUID ticketId) {
         return jdbc.query("""
                 SELECT id, tenant_id, ticket_id, author_type, author_id,
-                       content, citations::text AS citations, tokens, created_at
+                       content, visibility, citations::text AS citations, tokens, created_at
                 FROM ticket_message WHERE ticket_id = ? ORDER BY created_at
                 """, MESSAGE_MAPPER, ticketId);
+    }
+
+    public List<TicketMessage> listPublicMessages(UUID ticketId) {
+        return jdbc.query("""
+                SELECT id, tenant_id, ticket_id, author_type, author_id,
+                       content, visibility, citations::text AS citations, tokens, created_at
+                FROM ticket_message
+                WHERE ticket_id = ? AND visibility = 'PUBLIC'
+                ORDER BY created_at
+                """, MESSAGE_MAPPER, ticketId);
+    }
+
+    public Optional<TicketMessage> findMessage(UUID ticketId, UUID messageId) {
+        return jdbc.query("""
+                SELECT id, tenant_id, ticket_id, author_type, author_id,
+                       content, visibility, citations::text AS citations, tokens, created_at
+                FROM ticket_message
+                WHERE ticket_id = ? AND id = ?
+                """, MESSAGE_MAPPER, ticketId, messageId).stream().findFirst();
     }
 
     public int countByStatus(String status) {

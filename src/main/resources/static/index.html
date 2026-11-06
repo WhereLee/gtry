@@ -4,6 +4,7 @@
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <title>Helpdesk · 多租户 AI 客服</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
     <link rel="stylesheet" href="/style.css"/>
 </head>
 <body>
@@ -37,9 +38,11 @@
             <button id="tab-tickets" class="tab active">工单</button>
             <button id="tab-wiki" class="tab">知识库</button>
             <button id="tab-usage" class="tab">用量</button>
+            <button id="tab-team" class="tab hidden">团队</button>
             <button id="tab-platform" class="tab hidden">平台</button>
         </nav>
         <div class="who">
+            <a id="portal-link" class="link" href="/portal.html" target="_blank">客户门户</a>
             <span id="who-tenant" class="pill"></span>
             <span id="who-user" class="muted"></span>
             <span id="usage" class="pill ghost"></span>
@@ -92,11 +95,20 @@
                     <select id="triage-assignee" aria-label="负责人"></select>
                     <button id="triage-apply" class="ghost">调整分诊</button>
                 </div>
+                <div id="ticket-csat" class="triage hidden">
+                    <div><span class="label">客户评分</span><span id="ticket-csat-value"></span></div>
+                    <div class="grow"><span id="ticket-csat-comment" class="muted small"></span></div>
+                </div>
                 <div id="messages" class="messages"></div>
                 <div id="citations" class="citations hidden"></div>
                 <form id="reply-form" class="reply-form">
                     <textarea id="reply-content" rows="3" placeholder="人工回复客户，Ctrl+Enter 发送"></textarea>
-                    <button type="submit" class="primary">发送回复</button>
+                    <div class="reply-actions">
+                        <label class="checkbox-row">
+                            <input id="internal-note" type="checkbox"/> 内部备注
+                        </label>
+                        <button type="submit" class="primary">发送回复</button>
+                    </div>
                 </form>
             </div>
         </section>
@@ -213,6 +225,43 @@
                     </tr>
                     </thead>
                     <tbody id="tenant-table"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <main id="team-view" class="page hidden">
+        <div class="page-head">
+            <div>
+                <h2>团队</h2>
+                <div class="muted small">创建坐席、调整角色、停用账号</div>
+            </div>
+            <button id="team-refresh" class="ghost">刷新</button>
+        </div>
+        <form id="team-form" class="panel">
+            <div class="panel-head">
+                <h3>新增成员</h3>
+                <span class="muted small">密码至少 8 位</span>
+            </div>
+            <div class="form-grid">
+                <label>邮箱<input id="team-email" type="email" required/></label>
+                <label>显示名称<input id="team-name" required/></label>
+                <label>角色
+                    <select id="team-role">
+                        <option value="AGENT" selected>AGENT</option>
+                        <option value="TENANT_ADMIN">TENANT_ADMIN</option>
+                    </select>
+                </label>
+                <label>初始密码<input id="team-password" type="password" minlength="8" required/></label>
+            </div>
+            <button type="submit" class="primary">创建成员</button>
+        </form>
+        <div class="panel">
+            <div class="panel-head"><h3>成员列表</h3></div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>成员</th><th>角色</th><th>状态</th><th>操作</th></tr></thead>
+                    <tbody id="team-table"></tbody>
                 </table>
             </div>
         </div>

@@ -10,6 +10,7 @@ public record TicketMessage(
         String authorType,
         UUID authorId,
         String content,
+        String visibility,
         String citationsJson,
         int tokens,
         Instant createdAt

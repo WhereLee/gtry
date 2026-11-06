@@ -65,6 +65,9 @@ helpdesk:
     rrf-k: ${HELPDESK_WIKI_RRF_K:60}
     freshness-boost: ${HELPDESK_WIKI_FRESHNESS_BOOST:0.02}
     include-internal-default: ${HELPDESK_WIKI_INCLUDE_INTERNAL:true}
+  public-portal:
+    rate-limit-per-minute: ${HELPDESK_PUBLIC_RATE_LIMIT:20}
+    token-ttl-days: ${HELPDESK_PUBLIC_TOKEN_TTL_DAYS:30}
   quota:
     default-monthly-tokens: ${HELPDESK_DEFAULT_MONTHLY_TOKENS:200000}
     rate-limit-per-minute: ${HELPDESK_RATE_LIMIT_PER_MINUTE:60}

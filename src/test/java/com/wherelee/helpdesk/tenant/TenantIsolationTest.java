@@ -40,7 +40,7 @@ class TenantIsolationTest {
         Ticket ticket = TenantContext.callWith(
                 TenantScope.tenant(ACME),
                 () -> tickets.create(ACME, "isolation-test", "only acme can see this",
-                        "NORMAL", "OTHER", "RULE", "test", null)
+                        "NORMAL", "OTHER", "RULE", "test", null, null, null)
         );
         try {
             assertThat(TenantContext.callWith(TenantScope.tenant(ACME),
@@ -59,7 +59,7 @@ class TenantIsolationTest {
         assertThatThrownBy(() -> TenantContext.callWith(
                 TenantScope.tenant(ACME),
                 () -> tickets.create(CLOUDWISE, "cross-tenant", "should be rejected",
-                        "NORMAL", "OTHER", "RULE", "test", null)
+                        "NORMAL", "OTHER", "RULE", "test", null, null, null)
         )).isInstanceOf(DataAccessException.class);
     }
 

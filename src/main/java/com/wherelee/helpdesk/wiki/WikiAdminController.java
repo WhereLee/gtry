@@ -54,6 +54,7 @@ public class WikiAdminController {
         String normalized = switch (kind == null ? "" : kind.toUpperCase()) {
             case "BLIND" -> "BLIND";
             case "REAL" -> "REAL";
+            case "FEEDBACK" -> "FEEDBACK";
             default -> "FACT";
         };
         return evalService.start(Math.max(10, Math.min(sample, 2000)), normalized);

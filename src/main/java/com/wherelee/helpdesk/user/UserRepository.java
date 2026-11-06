@@ -67,4 +67,18 @@ public class UserRepository {
                 ORDER BY display_name
                 """, MAPPER, tenantId);
     }
+
+    public boolean updateRoleStatus(UUID id, String role, String status) {
+        return jdbc.update("""
+                UPDATE app_user SET role = ?, status = ? WHERE id = ?
+                """, role, status, id) > 0;
+    }
+
+    public long countActiveTenantAdmins(UUID tenantId) {
+        Long count = jdbc.queryForObject("""
+                SELECT count(*) FROM app_user
+                WHERE tenant_id = ? AND role = 'TENANT_ADMIN' AND status = 'ACTIVE'
+                """, Long.class, tenantId);
+        return count == null ? 0 : count;
+    }
 }
