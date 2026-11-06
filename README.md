@@ -62,6 +62,34 @@ java -jar target\helpdesk-0.1.0.jar
 AI 流式建议和引用来源；顶部可以切到“知识库”做 wiki 页面维护和检索测试。
 无需前端构建步骤。
 
+## Docker 部署
+
+`deploy/` 下是一套可直接上服务器的 Compose：
+
+```text
+deploy/
+  Dockerfile            运行镜像（JRE 17 + jar）
+  docker-compose.yml    postgres(pgvector) + redis + app
+  .env.example          密码、JWT、DeepSeek Key
+  helpdesk-nginx.conf   /helpdesk/ 反向代理（SSE 已关闭 buffering）
+```
+
+```bash
+cd /opt/helpdesk
+# 1) 放文件
+#    app/helpdesk.jar
+#    models/bge-base-zh-v1.5-onnx-int8/
+#    models/bge-reranker-base-onnx-int8/
+# 2) 配置
+cp .env.example .env && chmod 600 .env
+# 3) 启动
+sudo docker compose up -d --build
+curl -s http://127.0.0.1:8091/actuator/health
+```
+
+Postgres 和 Redis 不暴露公网端口，只通过 Compose 网络给 app 使用；
+宿主 Nginx 把 `/helpdesk/` 反代到 `127.0.0.1:8091`。
+
 默认连接：
 
 | 用途 | 用户 | 密码 |
