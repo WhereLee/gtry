@@ -21,7 +21,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @TestPropertySource(properties = {
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:5432/helpdesk_test",
-        "spring.flyway.url=jdbc:postgresql://127.0.0.1:5432/helpdesk_test"
+        "spring.flyway.url=jdbc:postgresql://127.0.0.1:5432/helpdesk_test",
+        "helpdesk.llm.provider=mock",
+        "helpdesk.embedding.provider=mock",
+        "helpdesk.rerank.enabled=false"
 })
 @EnabledIfEnvironmentVariable(named = "HELPDESK_IT", matches = "true")
 class TenantIsolationTest {
