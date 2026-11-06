@@ -11,6 +11,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
@@ -91,7 +92,7 @@ public class QuotaService {
             byDate.put(row.date(), row);
         }
         List<UsageRepository.DailyUsage> result = new ArrayList<>(safeDays);
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
         for (int i = safeDays - 1; i >= 0; i--) {
             String date = today.minusDays(i).toString();
             result.add(byDate.getOrDefault(date, new UsageRepository.DailyUsage(date, 0, 0)));

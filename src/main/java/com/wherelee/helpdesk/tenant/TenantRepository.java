@@ -74,10 +74,12 @@ public class TenantRepository {
                        (SELECT count(*) FROM ticket k WHERE k.tenant_id = t.id) AS ticket_count,
                        (SELECT COALESCE(sum(e.tokens), 0) FROM usage_event e
                         WHERE e.tenant_id = t.id
-                          AND e.created_at >= date_trunc('month', now())) AS tokens_this_month,
+                          AND e.created_at >= date_trunc('month', now() AT TIME ZONE 'Asia/Shanghai')
+                              AT TIME ZONE 'Asia/Shanghai') AS tokens_this_month,
                        (SELECT COALESCE(sum(e.cost_micros), 0) FROM usage_event e
                         WHERE e.tenant_id = t.id
-                          AND e.created_at >= date_trunc('month', now())) AS cost_this_month
+                          AND e.created_at >= date_trunc('month', now() AT TIME ZONE 'Asia/Shanghai')
+                              AT TIME ZONE 'Asia/Shanghai') AS cost_this_month
                 FROM tenant t
                 ORDER BY t.created_at
                 """, (rs, rowNum) -> new TenantStats(
