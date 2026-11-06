@@ -2,6 +2,8 @@ package com.wherelee.helpdesk.wiki;
 
 import com.wherelee.helpdesk.tenant.TenantContext;
 import com.wherelee.helpdesk.tenant.TenantScope;
+import com.wherelee.helpdesk.outbox.OutboxRepository;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -20,17 +23,23 @@ public class WikiAdminController {
     private final WikiSeeder seeder;
     private final EvalService evalService;
     private final BlindQuestionService blindQuestionService;
+    private final OutboxRepository outbox;
+    private final StringRedisTemplate redis;
 
     public WikiAdminController(
             WikiRepository repository,
             WikiSeeder seeder,
             EvalService evalService,
-            BlindQuestionService blindQuestionService
+            BlindQuestionService blindQuestionService,
+            OutboxRepository outbox,
+            StringRedisTemplate redis
     ) {
         this.repository = repository;
         this.seeder = seeder;
         this.evalService = evalService;
         this.blindQuestionService = blindQuestionService;
+        this.outbox = outbox;
+        this.redis = redis;
     }
 
     @PostMapping("/seed")
@@ -78,7 +87,22 @@ public class WikiAdminController {
                 repository.countPages(),
                 repository.countSections(),
                 repository.countChunks(),
-                repository.countEvalQuestions()
+                repository.countEvalQuestions(),
+                outbox.countByStatus("PENDING"),
+                outbox.countByStatus("FAILED")
+        );
+    }
+
+    @GetMapping("/outbox/status")
+    public Map<String, Object> outboxStatus() {
+        requirePlatformAdmin();
+        Long dlq = redis.opsForStream().size("helpdesk:stream:index:dlq");
+        return Map.of(
+                "pending", outbox.countByStatus("PENDING"),
+                "publishing", outbox.countByStatus("PUBLISHING"),
+                "published", outbox.countByStatus("PUBLISHED"),
+                "failed", outbox.countByStatus("FAILED"),
+                "dlq", dlq == null ? 0 : dlq
         );
     }
 

@@ -114,6 +114,9 @@ class WikiSearchTest {
                         List.of(new WikiPageDtos.SectionInput("适用条件", "金卡会员消费一元累积两积分。"))
                 )));
         UUID pageId = created.page().id();
+        // Page creation now enqueues an outbox event; force indexing here so the
+        // search assertions are deterministic without waiting for the consumer.
+        TenantContext.runWith(admin, () -> pageService.reindex(pageId));
 
         try {
             assertThat(created.sections()).hasSize(1);

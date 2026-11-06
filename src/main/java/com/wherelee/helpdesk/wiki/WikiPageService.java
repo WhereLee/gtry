@@ -1,6 +1,7 @@
 package com.wherelee.helpdesk.wiki;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wherelee.helpdesk.outbox.OutboxRepository;
 import com.wherelee.helpdesk.tenant.TenantContext;
 import com.wherelee.helpdesk.tenant.TenantScope;
 import org.springframework.http.HttpStatus;
@@ -20,17 +21,20 @@ public class WikiPageService {
 
     private final WikiRepository repository;
     private final WikiIndexService indexService;
+    private final OutboxRepository outbox;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
 
     public WikiPageService(
             WikiRepository repository,
             WikiIndexService indexService,
+            OutboxRepository outbox,
             ObjectMapper objectMapper,
             PlatformTransactionManager transactionManager
     ) {
         this.repository = repository;
         this.indexService = indexService;
+        this.outbox = outbox;
         this.objectMapper = objectMapper;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
@@ -55,12 +59,12 @@ public class WikiPageService {
             );
             insertSections(scope.tenantId(), page.id(), request.sections());
             audit(scope, "wiki.page.create", page.id(), Map.of("title", request.title()));
+            enqueueIndex(scope.tenantId(), page.id());
             return page.id();
         });
         if (pageId == null) {
             throw new IllegalStateException("page transaction returned no id");
         }
-        indexService.indexPage(pageId);
         return detail(pageId);
     }
 
@@ -75,8 +79,8 @@ public class WikiPageService {
             repository.deleteSections(pageId);
             insertSections(scope.tenantId(), pageId, request.sections());
             audit(scope, "wiki.page.update", pageId, Map.of("title", request.title()));
+            enqueueIndex(scope.tenantId(), pageId);
         });
-        indexService.indexPage(pageId);
         return detail(pageId);
     }
 
@@ -130,6 +134,12 @@ public class WikiPageService {
             repository.createSection(
                     tenantId, pageId, seq++, input.heading().trim(), input.content().trim());
         }
+    }
+
+    private void enqueueIndex(UUID tenantId, UUID pageId) {
+        outbox.insert(
+                tenantId, "wiki_page", pageId, "WIKI_PAGE_INDEX",
+                "{\"pageId\":\"" + pageId + "\"}");
     }
 
     private WikiDtos.PageDetail detail(UUID pageId) {

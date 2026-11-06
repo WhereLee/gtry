@@ -78,17 +78,21 @@ helpdesk_search traceId=ab12cd34 queryHash=7f3a includeInternal=true
 | `POST /api/admin/seed?force=` | 生成演示 wiki（2 租户 / 10 空间 / 1 万小节） |
 | `GET /api/admin/seed/status` | 种子进度 |
 | `GET /api/admin/index/status` | pages / sections / chunks / questions 数量 |
+| `GET /api/admin/outbox/status` | 索引事件 pending / publishing / published / failed / dlq |
 | `POST /api/admin/eval?sample=` | 跑 recall@5 / MRR@10 / nDCG@10 |
 | `GET /api/admin/eval/status` | 评测结果与失败样例 |
 | `GET /api/admin/stale-pages?days=` | 过期页面报告 |
 
-索引失败不会阻塞请求；种子和评测都是异步任务，带状态查询。
+页面保存通过事务性 outbox + Redis Stream 异步索引，失败进入 PEL/DLQ，
+不会阻塞页面保存请求；种子和评测也是异步任务，带状态查询。
 
 ## 8. 已知边界
 
 - bigram 全文检索是“无扩展”的折中，召回不如专业分词，但零依赖、可解释；
 - HNSW 是全局索引，租户过滤在 ANN 之后；租户很多时需要分区索引或
   `hnsw.iterative_scan`；
+- 页面保存后搜索通常有 1–3 秒延迟；种子数据仍同步批量索引；
+- DLQ 只保留失败消息，没有自动重放页面；
 - 种子数据是模板生成的，评测集与语料同分布，指标会偏乐观；上线前需要用真实
   客服问题做一次盲测。
 

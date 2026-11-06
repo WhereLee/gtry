@@ -84,6 +84,9 @@ public final class WikiDtos {
     public record PageDetail(PageView page, List<SectionView> sections) {
     }
 
-    public record IndexStatus(long pages, long sections, long chunks, long questions) {
+    public record IndexStatus(
+            long pages, long sections, long chunks, long questions,
+            long pendingIndexEvents, long failedIndexEvents
+    ) {
     }
 }
