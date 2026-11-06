@@ -1,6 +1,16 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- The application connects as a non-superuser so row-level security is actually
+-- enforced. Flyway runs as the database owner and creates the role here.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'helpdesk_app') THEN
+        CREATE ROLE helpdesk_app LOGIN PASSWORD 'helpdesk_app';
+    END IF;
+END
+$$;
+
 CREATE TABLE tenant (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slug VARCHAR(64) NOT NULL UNIQUE,
