@@ -50,20 +50,20 @@ async function submit() {
       <p class="muted">使用租户、邮箱和密码登录</p>
       <el-form label-position="top" @submit.prevent="submit">
         <el-form-item label="租户">
-          <el-select v-model="tenantSlug" class="full-width">
+          <el-select v-model="tenantSlug" class="full-width" data-testid="login-tenant">
             <el-option label="acme（电商客服）" value="acme" />
             <el-option label="cloudwise（SaaS 客服）" value="cloudwise" />
             <el-option label="platform（平台管理）" value="platform" />
           </el-select>
         </el-form-item>
         <el-form-item label="邮箱">
-          <el-input v-model="email" autocomplete="username" />
+          <el-input v-model="email" autocomplete="username" data-testid="login-email" />
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="password" type="password" show-password autocomplete="current-password" @keyup.enter="submit" />
+          <el-input v-model="password" type="password" show-password autocomplete="current-password" data-testid="login-password" @keyup.enter="submit" />
         </el-form-item>
         <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
-        <el-button class="full-width login-submit" type="primary" :loading="loading" @click="submit">
+        <el-button class="full-width login-submit" type="primary" :loading="loading" data-testid="login-submit" @click="submit">
           登录
         </el-button>
       </el-form>

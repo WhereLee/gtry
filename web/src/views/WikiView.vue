@@ -194,6 +194,7 @@ onMounted(loadSpaces)
             v-for="space in spaces"
             :key="space.id"
             class="wiki-item"
+            data-testid="wiki-space"
             :class="{ active: space.id === selectedSpaceId }"
             @click="selectSpace(space)"
           >
@@ -213,6 +214,7 @@ onMounted(loadSpaces)
             v-for="page in pages"
             :key="page.id"
             class="wiki-item"
+            data-testid="wiki-page"
             :class="{ active: page.id === selectedPageId }"
             @click="openPage(page)"
           >
@@ -230,7 +232,7 @@ onMounted(loadSpaces)
           <div class="detail-meta">{{ meta }}</div>
         </div>
         <div class="detail-actions">
-          <el-button type="primary" :loading="saving" @click="savePage">保存</el-button>
+          <el-button type="primary" :loading="saving" data-testid="wiki-save" @click="savePage">保存</el-button>
           <el-button :icon="Refresh" @click="reindexPage">重建索引</el-button>
           <el-button :icon="Delete" :disabled="!selectedPageId" @click="deletePage">删除</el-button>
         </div>
@@ -260,8 +262,8 @@ onMounted(loadSpaces)
 
         <div class="search-box">
           <div class="toolbar">
-            <el-input v-model="query" placeholder="测试检索：输入一个客户问题" class="full-width" @keyup.enter="search" />
-            <el-button type="primary" :icon="Search" :loading="searching" @click="search">检索</el-button>
+            <el-input v-model="query" placeholder="测试检索：输入一个客户问题" class="full-width" data-testid="wiki-query" @keyup.enter="search" />
+            <el-button type="primary" :icon="Search" :loading="searching" data-testid="wiki-search" @click="search">检索</el-button>
           </div>
           <div v-if="searchResult" class="muted small">
             traceId={{ searchResult.traceId }} · vector={{ searchResult.stats.vectorCount }} ·

@@ -347,9 +347,9 @@ onMounted(async () => {
     <aside class="ticket-sidebar">
       <el-card class="panel-card" shadow="never">
         <div class="create-form">
-          <el-input v-model="createForm.subject" placeholder="工单标题" maxlength="255" />
-          <el-input v-model="createForm.description" type="textarea" :rows="3" placeholder="客户问题描述" maxlength="20000" />
-          <el-button type="primary" :icon="Plus" @click="createTicket">新建工单</el-button>
+          <el-input v-model="createForm.subject" placeholder="工单标题" maxlength="255" data-testid="ticket-subject" />
+          <el-input v-model="createForm.description" type="textarea" :rows="3" placeholder="客户问题描述" maxlength="20000" data-testid="ticket-description" />
+          <el-button type="primary" :icon="Plus" data-testid="ticket-create" @click="createTicket">新建工单</el-button>
         </div>
       </el-card>
 
@@ -369,6 +369,7 @@ onMounted(async () => {
             v-for="ticket in tickets"
             :key="ticket.id"
             class="ticket-item"
+            data-testid="ticket-item"
             :class="{ active: ticket.id === activeId, 'sla-breached': ticket.slaBreached }"
             @click="openTicket(ticket.id)"
           >
@@ -390,7 +391,7 @@ onMounted(async () => {
       <template v-else>
         <div class="detail-header">
           <div>
-            <h2>{{ activeTicket.subject }}</h2>
+            <h2 data-testid="ticket-detail-subject">{{ activeTicket.subject }}</h2>
             <div class="detail-meta">
               <el-tag size="small" :type="statusType(activeTicket.status)">{{ statusLabel(activeTicket.status) }}</el-tag>
               <span> · {{ priorityLabel(activeTicket.priority) }} · {{ categoryLabel(activeTicket.category) }}</span>
@@ -403,8 +404,8 @@ onMounted(async () => {
             </div>
           </div>
           <div class="detail-actions">
-            <el-button type="primary" :loading="streaming" @click="suggest">AI 建议回复</el-button>
-            <el-button :disabled="activeTicket.status === 'CLOSED'" @click="closeTicket">关闭工单</el-button>
+            <el-button type="primary" :loading="streaming" data-testid="ticket-ai" @click="suggest">AI 建议回复</el-button>
+            <el-button :disabled="activeTicket.status === 'CLOSED'" data-testid="ticket-close" @click="closeTicket">关闭工单</el-button>
           </div>
         </div>
 
@@ -493,10 +494,10 @@ onMounted(async () => {
         </div>
 
         <div class="reply-form">
-          <el-input v-model="replyContent" type="textarea" :rows="3" placeholder="人工回复客户，Ctrl+Enter 发送" @keydown.ctrl.enter="sendReply" @keydown.meta.enter="sendReply" />
+          <el-input v-model="replyContent" type="textarea" :rows="3" placeholder="人工回复客户，Ctrl+Enter 发送" data-testid="ticket-reply" @keydown.ctrl.enter="sendReply" @keydown.meta.enter="sendReply" />
           <div class="reply-actions">
             <el-checkbox v-model="internalNote">内部备注</el-checkbox>
-            <el-button type="primary" :disabled="!canReply" @click="sendReply">发送回复</el-button>
+            <el-button type="primary" :disabled="!canReply" data-testid="ticket-send" @click="sendReply">发送回复</el-button>
           </div>
         </div>
       </template>

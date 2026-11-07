@@ -245,10 +245,10 @@ onMounted(() => {
           <p class="muted">留下联系方式，客服会尽快处理。</p>
           <div class="portal-form">
             <el-form-item label="标题">
-              <el-input v-model="createForm.subject" maxlength="255" placeholder="例如：订单退货咨询" />
+              <el-input v-model="createForm.subject" maxlength="255" placeholder="例如：订单退货咨询" data-testid="portal-subject" />
             </el-form-item>
             <el-form-item label="问题描述">
-              <el-input v-model="createForm.description" type="textarea" :rows="5" maxlength="20000" placeholder="请描述遇到的问题、订单号或期望的处理方式" />
+              <el-input v-model="createForm.description" type="textarea" :rows="5" maxlength="20000" placeholder="请描述遇到的问题、订单号或期望的处理方式" data-testid="portal-description" />
             </el-form-item>
             <div class="portal-grid">
               <el-form-item label="称呼"><el-input v-model="createForm.name" maxlength="128" placeholder="可选" /></el-form-item>
@@ -256,7 +256,7 @@ onMounted(() => {
             </div>
             <el-input v-model="createForm.website" style="display: none" tabindex="-1" autocomplete="off" />
             <el-alert v-if="createError" :title="createError" type="error" :closable="false" show-icon />
-            <el-button type="primary" :loading="creating" @click="createTicket">提交工单</el-button>
+            <el-button type="primary" :loading="creating" data-testid="portal-submit" @click="createTicket">提交工单</el-button>
           </div>
         </el-card>
 
@@ -274,7 +274,7 @@ onMounted(() => {
       <el-card v-else class="portal-card" shadow="never">
         <div class="detail-header">
           <div>
-            <h2>{{ ticket.subject }}</h2>
+            <h2 data-testid="portal-ticket-subject">{{ ticket.subject }}</h2>
             <div class="detail-meta">
               <el-tag size="small" :type="statusType(ticket.status)">{{ statusLabel(ticket.status) }}</el-tag>
               · {{ categoryLabel(ticket.category) }} · {{ formatDateTime(ticket.createdAt) }}
@@ -286,7 +286,7 @@ onMounted(() => {
         <div class="token-box">
           <div>
             <div class="muted small">查询码（请保存，刷新页面后需要用它查询）</div>
-            <code>{{ token }}</code>
+            <code data-testid="portal-token">{{ token }}</code>
           </div>
           <el-button text type="primary" :icon="CopyDocument" @click="copyToken">复制</el-button>
         </div>
@@ -311,8 +311,8 @@ onMounted(() => {
         </div>
 
         <div v-if="!closed" class="portal-form">
-          <el-input v-model="replyContent" type="textarea" :rows="3" placeholder="补充说明或回复客服" />
-          <el-button type="primary" @click="reply">发送</el-button>
+          <el-input v-model="replyContent" type="textarea" :rows="3" placeholder="补充说明或回复客服" data-testid="portal-reply" />
+          <el-button type="primary" data-testid="portal-send" @click="reply">发送</el-button>
         </div>
 
         <div v-if="closed" class="portal-form">

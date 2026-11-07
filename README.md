@@ -102,6 +102,18 @@ npm run build      # 输出 web/dist
 
 `mvn package` 会自动完成上述构建；只有 `mvn test` 不会构建前端。
 
+浏览器回归（Playwright）：
+
+```powershell
+cd web
+npx playwright install chromium
+npm run e2e
+```
+
+默认会在 `8092` 端口启动一个使用 `helpdesk_e2e` 数据库、mock embedding/LLM 的实例。
+如果要跑已经启动的服务，设置 `E2E_BASE_URL`，例如
+`$env:E2E_BASE_URL='http://127.0.0.1:8091'`。
+
 ## Docker 部署
 
 `deploy/` 下是一套可直接上服务器的 Compose：
@@ -355,7 +367,7 @@ wiki 语料实测：embedding 15–20ms、向量检索 2–4ms、FTS 80–90ms�
 
 - HNSW + 租户过滤在小规模下正常，租户很多时需要使用分区索引或迭代扫描
 - 页面保存走异步索引；种子数据仍同步批量索引，首次 seed 会较慢
-- 还没有 Playwright 自动化浏览器回归，当前是手工验收
+- Playwright 覆盖登录、工单、知识库、报表、团队、AI 设置、平台和客户门户主链路
 - 工单分诊是规则引擎，不是 LLM 分类；需要模型分类时应在规则前加一层可降级的模型判断
 - wiki 版本历史/审批未实现，目前只能通过 `audit_log` 追溯页面级操作
 - 平台审计已入库，但还没有平台审计查询页
