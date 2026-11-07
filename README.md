@@ -60,13 +60,47 @@ java -jar target\helpdesk-0.1.0.jar
 
 打开 `http://127.0.0.1:8091/` 就是客服工作台：工单列表、新建工单、
 AI 流式建议和引用来源；顶部可以切到“知识库”做 wiki 页面维护和检索测试。
-无需前端构建步骤。
+前端是 Vue 3 + Vite + TypeScript + Element Plus；`mvn package` 会在
+`prepare-package` 阶段自动执行 `npm ci && npm run build`，并把产物复制进 jar。
 
 客户门户：`http://127.0.0.1:8091/portal.html?channel=acme-demo-key`
 （cloudwise 用 `cloudwise-demo-key`）。客户提交后拿到工单 ID 和查询码，
 可以查询进度、追加回复，工单关闭后提交 CSAT。
 
 API 文档：`http://127.0.0.1:8091/swagger-ui.html`，OpenAPI JSON 在 `/v3/api-docs`。
+
+## 前端开发
+
+```text
+web/
+  index.html          坐席工作台入口
+  portal.html         客户门户入口
+  src/
+    App.vue           工作台外壳、角色菜单、登录态
+    PortalApp.vue     客户门户
+    views/            工单、知识库、用量、报表、团队、AI 设置、平台
+    api.ts            统一鉴权、错误码和下载
+    types.ts          后端 DTO 的 TypeScript 类型
+    format.ts         分类/优先级/状态/成本/时间格式化
+```
+
+本地开发时，先启动后端 `8091`，再：
+
+```powershell
+cd web
+npm install
+npm run dev        # http://127.0.0.1:5175，/api 代理到 8091
+```
+
+生产构建：
+
+```powershell
+cd web
+npm run type-check
+npm run build      # 输出 web/dist
+```
+
+`mvn package` 会自动完成上述构建；只有 `mvn test` 不会构建前端。
 
 ## Docker 部署
 
@@ -291,6 +325,7 @@ wiki 语料实测：embedding 15–20ms、向量检索 2–4ms、FTS 80–90ms�
 ## 已实现
 
 - 多租户：JWT 租户上下文、连接级 session 变量、PostgreSQL RLS、平台管理员跨租户视图
+- 前端：Vue 3 + Vite + TypeScript + Element Plus，坐席工作台与客户门户双入口
 - 工单：创建、列表、详情、回复、状态流转
 - 分诊：规则分类、优先级、按坐席负载路由、人工调整与重新分诊
 - 工作台：登录、工单列表、新建、AI 流式建议、引用展示
@@ -320,7 +355,7 @@ wiki 语料实测：embedding 15–20ms、向量检索 2–4ms、FTS 80–90ms�
 
 - HNSW + 租户过滤在小规模下正常，租户很多时需要使用分区索引或迭代扫描
 - 页面保存走异步索引；种子数据仍同步批量索引，首次 seed 会较慢
-- 前端是原生 JS 单页工作台，没有独立 SPA 工程和自动化浏览器回归
+- 还没有 Playwright 自动化浏览器回归，当前是手工验收
 - 工单分诊是规则引擎，不是 LLM 分类；需要模型分类时应在规则前加一层可降级的模型判断
 - wiki 版本历史/审批未实现，目前只能通过 `audit_log` 追溯页面级操作
 - 平台审计已入库，但还没有平台审计查询页
