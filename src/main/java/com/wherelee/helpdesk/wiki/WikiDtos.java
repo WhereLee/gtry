@@ -84,6 +84,28 @@ public final class WikiDtos {
     public record PageDetail(PageView page, List<SectionView> sections) {
     }
 
+    public record PageVersionView(
+            UUID id,
+            int version,
+            String title,
+            String visibility,
+            String status,
+            UUID createdBy,
+            Instant createdAt
+    ) {
+        public static PageVersionView of(WikiPageVersion version) {
+            return new PageVersionView(
+                    version.id(), version.version(), version.title(), version.visibility(),
+                    version.status(), version.createdBy(), version.createdAt());
+        }
+    }
+
+    public record PageVersionDetail(
+            PageVersionView version,
+            List<WikiPageDtos.SectionInput> sections
+    ) {
+    }
+
     public record IndexStatus(
             long pages, long sections, long chunks, long questions,
             long pendingIndexEvents, long failedIndexEvents

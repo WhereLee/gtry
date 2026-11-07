@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Plus, Refresh } from '@element-plus/icons-vue'
 import { api, download, friendlyError } from '@/api'
@@ -9,6 +9,7 @@ import { formatDate } from '@/format'
 const tenants = ref<Tenant[]>([])
 const loading = ref(false)
 const creating = ref(false)
+const showDeleted = ref(false)
 const form = reactive({
   slug: '',
   name: '',
@@ -18,6 +19,10 @@ const form = reactive({
   adminPassword: '',
   adminDisplayName: '',
 })
+
+const visibleTenants = computed(() =>
+  showDeleted.value ? tenants.value : tenants.value.filter((tenant) => tenant.status !== 'DELETED'),
+)
 
 async function load() {
   loading.value = true
@@ -96,9 +101,9 @@ async function pollDeletion(tenantId: string) {
 async function deleteTenant(tenant: Tenant) {
   try {
     const { value } = await ElMessageBox.prompt(
-      `删除租户 ${tenant.slug} 会级联删除所有数据，且不可恢复。输入 slug 确认：`,
-      '删除租户',
-      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' },
+      `租户 ${tenant.slug} 将进入回收站，30 天后自动彻底删除。输入 slug 确认：`,
+      '移入回收站',
+      { confirmButtonText: '确认移入', cancelButtonText: '取消', type: 'warning' },
     )
     if (value !== tenant.slug) {
       ElMessage.warning('slug 不匹配，已取消')
@@ -107,7 +112,40 @@ async function deleteTenant(tenant: Tenant) {
     const job = await api<{ state: string }>(`/api/platform/tenants/${tenant.id}?confirm=${encodeURIComponent(value)}`, { method: 'DELETE' })
     if (job.state === 'RUNNING' || job.state === 'IDLE') await pollDeletion(tenant.id)
     await load()
-    ElMessage.success('租户已删除')
+    ElMessage.success('租户已移入回收站')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(friendlyError(error))
+  }
+}
+
+async function restoreTenant(tenant: Tenant) {
+  try {
+    await api(`/api/platform/tenants/${tenant.id}/restore`, { method: 'POST' })
+    await load()
+    ElMessage.success('租户已恢复')
+  } catch (error) {
+    ElMessage.error(friendlyError(error))
+  }
+}
+
+async function purgeTenant(tenant: Tenant) {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `彻底删除租户 ${tenant.slug} 会级联删除所有数据，且不可恢复。输入 slug 确认：`,
+      '彻底删除租户',
+      { confirmButtonText: '确认彻底删除', cancelButtonText: '取消', type: 'error' },
+    )
+    if (value !== tenant.slug) {
+      ElMessage.warning('slug 不匹配，已取消')
+      return
+    }
+    const job = await api<{ state: string }>(
+      `/api/platform/tenants/${tenant.id}/purge?confirm=${encodeURIComponent(value)}`,
+      { method: 'DELETE' },
+    )
+    if (job.state === 'RUNNING' || job.state === 'IDLE') await pollDeletion(tenant.id)
+    await load()
+    ElMessage.success('租户已彻底删除')
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(friendlyError(error))
   }
@@ -147,17 +185,27 @@ onMounted(load)
     </el-card>
 
     <el-card class="content-card" shadow="never">
-      <h3>租户列表</h3>
-      <el-table :data="tenants" size="small">
+      <div class="ticket-filter">
+        <h3>租户列表</h3>
+        <el-switch v-model="showDeleted" active-text="显示回收站" />
+      </div>
+      <div class="muted small" style="margin-bottom: 10px">删除后进入回收站，30 天后自动彻底清理。</div>
+      <el-table :data="visibleTenants" size="small">
         <el-table-column label="租户" min-width="190">
           <template #default="{ row }">
             <div>{{ row.name }}</div>
-            <div class="muted small">{{ row.slug }} · {{ formatDate(row.createdAt) }}</div>
+            <div class="muted small">
+              {{ row.slug }} · {{ formatDate(row.createdAt) }}
+              <span v-if="row.deletedAt"> · 删除于 {{ formatDate(row.deletedAt) }}</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="105">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.status === 'ACTIVE' ? 'success' : 'danger'">{{ row.status }}</el-tag>
+            <el-tag
+              size="small"
+              :type="row.status === 'ACTIVE' ? 'success' : row.status === 'SUSPENDED' ? 'warning' : 'danger'"
+            >{{ row.status }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="plan" label="套餐" width="90" />
@@ -168,13 +216,20 @@ onMounted(load)
             {{ Number(row.tokensThisMonth).toLocaleString() }} / {{ Number(row.monthlyTokenBudget).toLocaleString() }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="250">
+        <el-table-column label="操作" width="290">
           <template #default="{ row }">
-            <el-button size="small" :disabled="row.slug === 'platform'" @click="toggleTenant(row)">
-              {{ row.status === 'ACTIVE' ? '停用' : '启用' }}
-            </el-button>
-            <el-button size="small" :icon="Download" @click="exportTenant(row)">导出</el-button>
-            <el-button size="small" type="danger" plain :disabled="row.slug === 'platform'" @click="deleteTenant(row)">删除</el-button>
+            <template v-if="row.status === 'DELETED'">
+              <el-button size="small" type="success" @click="restoreTenant(row)">恢复</el-button>
+              <el-button size="small" :icon="Download" @click="exportTenant(row)">导出</el-button>
+              <el-button size="small" type="danger" plain @click="purgeTenant(row)">彻底删除</el-button>
+            </template>
+            <template v-else>
+              <el-button size="small" :disabled="row.slug === 'platform'" @click="toggleTenant(row)">
+                {{ row.status === 'ACTIVE' ? '停用' : '启用' }}
+              </el-button>
+              <el-button size="small" :icon="Download" @click="exportTenant(row)">导出</el-button>
+              <el-button size="small" type="danger" plain :disabled="row.slug === 'platform'" @click="deleteTenant(row)">移入回收站</el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>

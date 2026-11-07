@@ -70,6 +70,19 @@ public class PlatformController {
         return platformService.deleteTenant(id, confirm);
     }
 
+    @PostMapping("/tenants/{id}/restore")
+    public PlatformDtos.TenantSummary restore(@PathVariable UUID id) {
+        return platformService.restoreTenant(id);
+    }
+
+    @DeleteMapping("/tenants/{id}/purge")
+    public JobStatus.Snapshot purge(
+            @PathVariable UUID id,
+            @RequestParam String confirm
+    ) {
+        return platformService.purgeTenant(id, confirm);
+    }
+
     @GetMapping("/tenants/{id}/delete-status")
     public JobStatus.Snapshot deleteStatus(@PathVariable UUID id) {
         return platformService.deletionStatus(id);

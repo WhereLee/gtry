@@ -9,6 +9,8 @@ import com.wherelee.helpdesk.tenant.TenantScope;
 import com.wherelee.helpdesk.user.UserRepository;
 import com.wherelee.helpdesk.wiki.JobStatus;
 import com.wherelee.helpdesk.wiki.WikiRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,6 +20,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -26,6 +29,8 @@ import java.util.UUID;
 
 @Service
 public class PlatformService {
+
+    private static final Logger log = LoggerFactory.getLogger(PlatformService.class);
 
     private final TenantRepository tenants;
     private final UserRepository users;
@@ -168,8 +173,67 @@ public class PlatformService {
         if (confirm == null || !confirm.equals(tenant.slug())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "confirm_slug_required");
         }
+        if (!tenants.softDelete(tenantId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "tenant_already_deleted");
+        }
+        audit("tenant.soft_delete", tenantId, Map.of("slug", tenant.slug(), "retentionDays", 30));
+        JobStatus job = new JobStatus();
+        job.start(1);
+        job.done(Map.of("tenantId", tenantId.toString(), "slug", tenant.slug(), "recycleBin", true));
+        return job.snapshot();
+    }
+
+    public PlatformDtos.TenantSummary restoreTenant(UUID tenantId) {
+        requirePlatformAdmin();
+        Tenant tenant = findTenant(tenantId);
+        if (!"DELETED".equals(tenant.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "tenant_not_deleted");
+        }
+        if (!tenants.restore(tenantId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "tenant_restore_failed");
+        }
+        audit("tenant.restore", tenantId, Map.of("slug", tenant.slug()));
+        return tenants.listWithStats().stream()
+                .filter(stats -> stats.id().equals(tenantId))
+                .map(PlatformDtos.TenantSummary::of)
+                .findFirst()
+                .orElseThrow();
+    }
+
+    public JobStatus.Snapshot purgeTenant(UUID tenantId, String confirm) {
+        requirePlatformAdmin();
+        Tenant tenant = findTenant(tenantId);
+        if ("platform".equals(tenant.slug())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "cannot_delete_platform");
+        }
+        if (!"DELETED".equals(tenant.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "tenant_not_deleted");
+        }
+        if (confirm == null || !confirm.equals(tenant.slug())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "confirm_slug_required");
+        }
         TenantScope actor = TenantContext.get();
         return deletionService.start(tenant, actor);
+    }
+
+    public int purgeExpired(int retentionDays) {
+        Instant cutoff = Instant.now().minus(Math.max(1, retentionDays), ChronoUnit.DAYS);
+        int purged = 0;
+        for (Tenant tenant : tenants.findDeletedBefore(cutoff)) {
+            try {
+                platformRepository.insertAudit(
+                        null, "tenant.purge", "tenant", tenant.id().toString(),
+                        objectMapper.writeValueAsString(Map.of(
+                                "slug", tenant.slug(), "retentionDays", retentionDays)));
+                tenants.delete(tenant.id());
+                purged++;
+                log.info("helpdesk_tenant_purged tenant={} slug={}", tenant.id(), tenant.slug());
+            } catch (Exception ex) {
+                log.warn("helpdesk_tenant_purge_failed tenant={} slug={} error={}",
+                        tenant.id(), tenant.slug(), ex.getMessage());
+            }
+        }
+        return purged;
     }
 
     public JobStatus.Snapshot deletionStatus(UUID tenantId) {

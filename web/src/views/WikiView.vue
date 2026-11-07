@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { Clock, Delete, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { api, friendlyError } from '@/api'
-import type { WikiPage, WikiPageDetail, WikiSearchResult, WikiSpace } from '@/types'
+import type {
+  WikiPage, WikiPageDetail, WikiPageVersion, WikiPageVersionDetail, WikiSearchResult, WikiSpace,
+} from '@/types'
 import { formatDateTime } from '@/format'
 
 interface SectionDraft {
@@ -19,12 +21,30 @@ const title = ref('')
 const visibility = ref('PUBLIC')
 const sections = ref<SectionDraft[]>([{ heading: '', content: '' }])
 const meta = ref('选择空间和页面，或新建一个页面')
+const pageStatus = ref('DRAFT')
 const loading = ref(false)
 const saving = ref(false)
+
+const versionDialogVisible = ref(false)
+const versionLoading = ref(false)
+const versions = ref<WikiPageVersion[]>([])
+const selectedVersion = ref<WikiPageVersionDetail | null>(null)
 
 const query = ref('')
 const searching = ref(false)
 const searchResult = ref<WikiSearchResult | null>(null)
+
+function statusLabel(code?: string | null) {
+  if (code === 'PUBLISHED') return '已发布'
+  if (code === 'REVIEW') return '待审核'
+  return '草稿'
+}
+
+function statusType(code?: string | null) {
+  if (code === 'PUBLISHED') return 'success' as const
+  if (code === 'REVIEW') return 'warning' as const
+  return 'info' as const
+}
 
 async function loadSpaces() {
   try {
@@ -41,6 +61,7 @@ async function loadSpaces() {
 async function selectSpace(space: WikiSpace) {
   selectedSpaceId.value = space.id
   selectedPageId.value = null
+  pageStatus.value = 'DRAFT'
   title.value = ''
   sections.value = [{ heading: '', content: '' }]
   meta.value = `${space.name} · 选择页面或新建`
@@ -63,6 +84,7 @@ function newPage() {
     return
   }
   selectedPageId.value = null
+  pageStatus.value = 'DRAFT'
   title.value = ''
   visibility.value = 'PUBLIC'
   sections.value = [{ heading: '', content: '' }]
@@ -75,6 +97,7 @@ async function openPage(page: WikiPage) {
   try {
     const detail = await api<WikiPageDetail>(`/api/wiki/pages/${page.id}`)
     selectedPageId.value = page.id
+    pageStatus.value = detail.page.status
     title.value = detail.page.title
     visibility.value = detail.page.visibility
     sections.value = detail.sections.map((section) => ({
@@ -111,14 +134,15 @@ async function savePage() {
   }
   saving.value = true
   try {
+    let saved: WikiPageDetail
     if (selectedPageId.value) {
-      const detail = await api<WikiPageDetail>(`/api/wiki/pages/${selectedPageId.value}`, {
+      saved = await api<WikiPageDetail>(`/api/wiki/pages/${selectedPageId.value}`, {
         method: 'PUT',
         body: JSON.stringify({ title: title.value.trim(), visibility: visibility.value, sections: validSections }),
       })
-      meta.value = `已保存 · ${detail.page.visibility} · ${formatDateTime(detail.page.updatedAt)}`
+      meta.value = `已保存 · ${saved.page.visibility} · ${formatDateTime(saved.page.updatedAt)}`
     } else {
-      const detail = await api<WikiPageDetail>('/api/wiki/pages', {
+      saved = await api<WikiPageDetail>('/api/wiki/pages', {
         method: 'POST',
         body: JSON.stringify({
           spaceId: selectedSpaceId.value,
@@ -127,11 +151,12 @@ async function savePage() {
           sections: validSections,
         }),
       })
-      selectedPageId.value = detail.page.id
-      meta.value = `已创建 · ${detail.page.visibility}`
+      selectedPageId.value = saved.page.id
+      meta.value = `已创建 · ${saved.page.visibility}`
     }
+    pageStatus.value = saved.page.status
     await loadPages()
-    ElMessage.success('页面已保存')
+    ElMessage.success(saved.page.status === 'DRAFT' ? '页面已保存为草稿，提交审核后才会进入检索' : '页面已保存')
   } catch (error) {
     ElMessage.error(friendlyError(error))
   } finally {
@@ -163,6 +188,74 @@ async function reindexPage() {
     ElMessage.success('索引已重建')
   } catch (error) {
     ElMessage.error(friendlyError(error))
+  }
+}
+
+async function changeStatus(action: 'submit' | 'approve' | 'reject') {
+  if (!selectedPageId.value) return
+  try {
+    const detail = await api<WikiPageDetail>(`/api/wiki/pages/${selectedPageId.value}/${action}`, {
+      method: 'POST',
+    })
+    pageStatus.value = detail.page.status
+    meta.value = `${detail.page.spaceName} · ${detail.page.visibility} · ${formatDateTime(detail.page.updatedAt)}`
+    await loadPages()
+    ElMessage.success(action === 'submit' ? '已提交审核' : action === 'approve' ? '已通过审核' : '已驳回')
+  } catch (error) {
+    ElMessage.error(friendlyError(error))
+  }
+}
+
+async function openVersions() {
+  if (!selectedPageId.value) return
+  versionDialogVisible.value = true
+  versionLoading.value = true
+  selectedVersion.value = null
+  try {
+    versions.value = await api<WikiPageVersion[]>(`/api/wiki/pages/${selectedPageId.value}/versions`)
+  } catch (error) {
+    ElMessage.error(friendlyError(error))
+  } finally {
+    versionLoading.value = false
+  }
+}
+
+async function selectVersion(version: WikiPageVersion) {
+  if (!selectedPageId.value) return
+  versionLoading.value = true
+  try {
+    selectedVersion.value = await api<WikiPageVersionDetail>(
+      `/api/wiki/pages/${selectedPageId.value}/versions/${version.version}`,
+    )
+  } catch (error) {
+    ElMessage.error(friendlyError(error))
+  } finally {
+    versionLoading.value = false
+  }
+}
+
+async function rollbackVersion(version: WikiPageVersion) {
+  if (!selectedPageId.value) return
+  try {
+    await ElMessageBox.confirm(`确认回滚到 v${version.version}？当前内容会保存为新版本。`, '回滚版本', {
+      type: 'warning',
+    })
+    const detail = await api<WikiPageDetail>(`/api/wiki/pages/${selectedPageId.value}/rollback/${version.version}`, {
+      method: 'POST',
+    })
+    title.value = detail.page.title
+    visibility.value = detail.page.visibility
+    pageStatus.value = detail.page.status
+    sections.value = detail.sections.map((section) => ({
+      heading: (section.headingPath || '').split(' > ').pop() || '',
+      content: section.content,
+    }))
+    meta.value = `已回滚到 v${version.version} · ${detail.page.visibility} · ${formatDateTime(detail.page.updatedAt)}`
+    versionDialogVisible.value = false
+    await loadPages()
+    ElMessage.success('已回滚')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(friendlyError(error))
   }
 }
 
@@ -219,7 +312,9 @@ onMounted(loadSpaces)
             @click="openPage(page)"
           >
             <div>{{ page.title }}</div>
-            <div class="sub">{{ page.visibility }} · {{ formatDateTime(page.updatedAt) }}</div>
+            <div class="sub">
+              {{ statusLabel(page.status) }} · {{ page.visibility }} · {{ formatDateTime(page.updatedAt) }}
+            </div>
           </li>
         </ul>
       </el-card>
@@ -229,9 +324,29 @@ onMounted(loadSpaces)
       <div class="detail-header">
         <div>
           <h2>{{ selectedPageId ? '编辑页面' : '知识库' }}</h2>
-          <div class="detail-meta">{{ meta }}</div>
+          <div class="detail-meta">
+            <el-tag size="small" :type="statusType(pageStatus)">{{ statusLabel(pageStatus) }}</el-tag>
+            <span> · {{ meta }}</span>
+          </div>
         </div>
         <div class="detail-actions">
+          <el-button
+            v-if="selectedPageId && pageStatus === 'DRAFT'"
+            type="warning"
+            @click="changeStatus('submit')"
+          >提交审核</el-button>
+          <el-button
+            v-if="selectedPageId && pageStatus === 'REVIEW'"
+            type="success"
+            @click="changeStatus('approve')"
+          >通过</el-button>
+          <el-button
+            v-if="selectedPageId && pageStatus === 'REVIEW'"
+            type="danger"
+            plain
+            @click="changeStatus('reject')"
+          >驳回</el-button>
+          <el-button :icon="Clock" :disabled="!selectedPageId" @click="openVersions">版本历史</el-button>
           <el-button type="primary" :loading="saving" data-testid="wiki-save" @click="savePage">保存</el-button>
           <el-button :icon="Refresh" @click="reindexPage">重建索引</el-button>
           <el-button :icon="Delete" :disabled="!selectedPageId" @click="deletePage">删除</el-button>
@@ -278,5 +393,35 @@ onMounted(loadSpaces)
         </div>
       </div>
     </el-card>
+
+    <el-dialog v-model="versionDialogVisible" title="版本历史" width="860px">
+      <div v-loading="versionLoading" class="version-layout">
+        <ul class="wiki-list version-list">
+          <li
+            v-for="version in versions"
+            :key="version.id"
+            class="wiki-item"
+            :class="{ active: selectedVersion?.version.version === version.version }"
+            @click="selectVersion(version)"
+          >
+            <div>v{{ version.version }} · {{ version.title }}</div>
+            <div class="sub">{{ statusLabel(version.status) }} · {{ formatDateTime(version.createdAt) }}</div>
+          </li>
+          <el-empty v-if="!versions.length && !versionLoading" description="暂无版本" :image-size="50" />
+        </ul>
+        <div v-if="selectedVersion" class="version-detail">
+          <div class="detail-meta">
+            v{{ selectedVersion.version.version }} · {{ statusLabel(selectedVersion.version.status) }} ·
+            {{ formatDateTime(selectedVersion.version.createdAt) }}
+          </div>
+          <div v-for="(section, index) in selectedVersion.sections" :key="index" class="section-card">
+            <strong>{{ section.heading }}</strong>
+            <div class="muted small pre-wrap">{{ section.content }}</div>
+          </div>
+          <el-button type="warning" @click="rollbackVersion(selectedVersion.version)">回滚到此版本</el-button>
+        </div>
+        <el-empty v-else description="选择左侧版本查看内容" :image-size="60" />
+      </div>
+    </el-dialog>
   </div>
 </template>

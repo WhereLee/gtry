@@ -73,7 +73,7 @@ public class TenantDeletionService {
             status.done(Map.of("tenantId", tenant.id().toString(), "slug", tenant.slug()));
             log.info("helpdesk_tenant_deleted tenant={} slug={}", tenant.id(), tenant.slug());
         } catch (Exception ex) {
-            tenants.updateStatus(tenant.id(), "ACTIVE");
+            tenants.updateStatus(tenant.id(), "DELETED");
             status.fail(ex.getMessage());
             log.error("helpdesk_tenant_delete_failed tenant={} slug={}", tenant.id(), tenant.slug(), ex);
         }

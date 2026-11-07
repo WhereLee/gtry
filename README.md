@@ -195,6 +195,7 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8091/api/admin/eval?sample
 注入防护、引用裁剪、重试降级与评测口径见 [AI 可靠性](docs/AI可靠性.md)。
 部署、排障、发布回滚见 [运行手册](docs/运行手册.md)，备份恢复见
 [备份恢复演练](docs/备份恢复演练.md)。
+压测基线和 Redis/LLM/PostgreSQL 故障注入见 [压测与故障注入](docs/压测与故障注入.md)。
 
 索引状态与过期页面：
 
@@ -215,6 +216,12 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8091/api/wiki/pages -Header
 Invoke-RestMethod -Method Put    -Uri http://127.0.0.1:8091/api/wiki/pages/{id} -Headers $h ...
 Invoke-RestMethod -Method Delete -Uri http://127.0.0.1:8091/api/wiki/pages/{id} -Headers $h
 Invoke-RestMethod -Method Post   -Uri http://127.0.0.1:8091/api/wiki/pages/{id}/reindex -Headers $h
+
+# 审批与版本
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8091/api/wiki/pages/{id}/submit -Headers $h
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8091/api/wiki/pages/{id}/approve -Headers $h
+Invoke-RestMethod -Uri http://127.0.0.1:8091/api/wiki/pages/{id}/versions -Headers $h
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8091/api/wiki/pages/{id}/rollback/1 -Headers $h
 ```
 
 创建、更新、删除都会写入 `audit_log`（租户、操作者、动作、目标、摘要）。
@@ -348,6 +355,7 @@ wiki 语料实测：embedding 15–20ms、向量检索 2–4ms、FTS 80–90ms�
 - 附件：客户/坐席上传图片、PDF、文本；内部附件不进入客户门户
 - 团队管理：租户管理员创建坐席、调整角色、停用账号
 - 知识库：wiki 空间 / 页面 / 小节，页面 CRUD、可见性、负责人、复核时间、审计日志
+- 知识库治理：草稿/待审核/已发布状态、提交/通过/驳回、版本快照、版本回滚；只有已发布页面进入检索
 - 索引：小节级 BGE 向量 + bigram tsvector（GIN），页面编辑后增量重建
 - 索引可靠性：事务性 outbox + Redis Stream + PEL 重投 + DLQ，页面保存异步索引
 - 检索：全文 + 向量混合召回 → RRF → 新鲜度加权 → BGE cross-encoder 重排
@@ -361,16 +369,16 @@ wiki 语料实测：embedding 15–20ms、向量检索 2–4ms、FTS 80–90ms�
 - 用量面板：本月 tokens、预算使用率、成本、限流、近 14 天趋势
 - SLA：按优先级计算首次响应截止时间，定时扫描超时工单并记录指标
 - 报表：工单状态、SLA、首次响应/解决时长、CSAT、AI 采纳率、分类/优先级分布、成本
-- 平台管理：租户开通、停用/启用、JSON 导出、异步删除、平台级审计
+- 平台管理：租户开通、停用/启用、JSON 导出、回收站、恢复、30 天后自动彻底删除、平台级审计
 - 安全基线：登录限流、JWT `jti` 撤销、登出、安全响应头
 - 可观测：Actuator、Micrometer、Prometheus、Grafana 面板与告警规则
+- 自动化回归：Playwright 覆盖登录、工单、知识库、审批/版本、报表、团队、AI 设置、平台和客户门户
+- 压测：`tools/LoadTest.java`，128 并发 / 2000 请求下 0 错误，约 1.1k RPS（本机基线）
 
 ## 已知限制
 
 - HNSW + 租户过滤在小规模下正常，租户很多时需要使用分区索引或迭代扫描
 - 页面保存走异步索引；种子数据仍同步批量索引，首次 seed 会较慢
-- Playwright 覆盖登录、工单、知识库、报表、团队、AI 设置、平台和客户门户主链路
 - 工单分诊是规则引擎，不是 LLM 分类；需要模型分类时应在规则前加一层可降级的模型判断
-- wiki 版本历史/审批未实现，目前只能通过 `audit_log` 追溯页面级操作
 - 平台审计已入库，但还没有平台审计查询页
 - 没有接真实计费支付，只有用量计量

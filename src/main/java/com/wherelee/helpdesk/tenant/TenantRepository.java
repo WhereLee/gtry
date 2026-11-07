@@ -66,9 +66,35 @@ public class TenantRepository {
         return jdbc.update("DELETE FROM tenant WHERE id = ?", id);
     }
 
+    public boolean softDelete(UUID id) {
+        return jdbc.update("""
+                UPDATE tenant
+                SET status = 'DELETED', deleted_at = now(), updated_at = now()
+                WHERE id = ? AND status <> 'DELETED'
+                """, id) > 0;
+    }
+
+    public boolean restore(UUID id) {
+        return jdbc.update("""
+                UPDATE tenant
+                SET status = 'ACTIVE', deleted_at = NULL, updated_at = now()
+                WHERE id = ? AND status = 'DELETED'
+                """, id) > 0;
+    }
+
+    public List<Tenant> findDeletedBefore(Instant cutoff) {
+        return jdbc.query("""
+                SELECT id, slug, name, plan, status, monthly_token_budget
+                FROM tenant
+                WHERE status = 'DELETED' AND deleted_at IS NOT NULL AND deleted_at < ?
+                ORDER BY deleted_at
+                """, MAPPER, java.sql.Timestamp.from(cutoff));
+    }
+
     public List<TenantStats> listWithStats() {
         return jdbc.query("""
                 SELECT t.id, t.slug, t.name, t.plan, t.status, t.monthly_token_budget,
+                       t.deleted_at,
                        t.created_at,
                        (SELECT count(*) FROM app_user u WHERE u.tenant_id = t.id) AS user_count,
                        (SELECT count(*) FROM ticket k WHERE k.tenant_id = t.id) AS ticket_count,
@@ -93,14 +119,15 @@ public class TenantRepository {
                 rs.getLong("ticket_count"),
                 rs.getLong("tokens_this_month"),
                 rs.getLong("cost_this_month"),
-                rs.getTimestamp("created_at").toInstant()
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getTimestamp("deleted_at") == null ? null : rs.getTimestamp("deleted_at").toInstant()
         ));
     }
 
     public record TenantStats(
             UUID id, String slug, String name, String plan, String status,
             long monthlyTokenBudget, long userCount, long ticketCount,
-            long tokensThisMonth, long costMicrosThisMonth, Instant createdAt
+            long tokensThisMonth, long costMicrosThisMonth, Instant createdAt, Instant deletedAt
     ) {
     }
 }

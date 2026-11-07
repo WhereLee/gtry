@@ -116,6 +116,21 @@ export interface WikiPageDetail {
   sections: WikiSection[]
 }
 
+export interface WikiPageVersion {
+  id: string
+  version: number
+  title: string
+  visibility: string
+  status: string
+  createdBy?: string | null
+  createdAt: string
+}
+
+export interface WikiPageVersionDetail {
+  version: WikiPageVersion
+  sections: Array<{ heading: string; content: string }>
+}
+
 export interface WikiHit {
   sectionId: string
   pageId: string
@@ -190,6 +205,7 @@ export interface Tenant {
   tokensThisMonth: number
   costMicrosThisMonth: number
   createdAt: string
+  deletedAt?: string | null
 }
 
 export interface AiConfig {

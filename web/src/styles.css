@@ -157,6 +157,10 @@ h1, h2, h3, h4, p { margin: 0; }
 .search-hit .hit-title { font-weight: 650; font-size: 13px; }
 .search-hit .hit-path { color: var(--muted); font-size: 11px; margin: 3px 0; }
 .search-hit .hit-body { font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.version-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; min-height: 320px; }
+.version-list { max-height: 520px; }
+.version-detail { display: grid; align-content: start; gap: 10px; }
+.pre-wrap { white-space: pre-wrap; line-height: 1.65; }
 
 /* Portal */
 .portal-body { background: #f4f6fb; }

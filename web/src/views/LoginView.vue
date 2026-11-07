@@ -50,7 +50,14 @@ async function submit() {
       <p class="muted">使用租户、邮箱和密码登录</p>
       <el-form label-position="top" @submit.prevent="submit">
         <el-form-item label="租户">
-          <el-select v-model="tenantSlug" class="full-width" data-testid="login-tenant">
+          <el-select
+            v-model="tenantSlug"
+            class="full-width"
+            filterable
+            allow-create
+            default-first-option
+            data-testid="login-tenant"
+          >
             <el-option label="acme（电商客服）" value="acme" />
             <el-option label="cloudwise（SaaS 客服）" value="cloudwise" />
             <el-option label="platform（平台管理）" value="platform" />

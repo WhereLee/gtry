@@ -36,13 +36,15 @@ public final class PlatformDtos {
             long ticketCount,
             long tokensThisMonth,
             long costMicrosThisMonth,
-            Instant createdAt
+            Instant createdAt,
+            Instant deletedAt
     ) {
         public static TenantSummary of(TenantRepository.TenantStats stats) {
             return new TenantSummary(
                     stats.id(), stats.slug(), stats.name(), stats.plan(), stats.status(),
                     stats.monthlyTokenBudget(), stats.userCount(), stats.ticketCount(),
-                    stats.tokensThisMonth(), stats.costMicrosThisMonth(), stats.createdAt()
+                    stats.tokensThisMonth(), stats.costMicrosThisMonth(),
+                    stats.createdAt(), stats.deletedAt()
             );
         }
     }

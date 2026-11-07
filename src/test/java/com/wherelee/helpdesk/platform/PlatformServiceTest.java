@@ -1,6 +1,7 @@
 package com.wherelee.helpdesk.platform;
 
 import com.wherelee.helpdesk.tenant.TenantContext;
+import com.wherelee.helpdesk.tenant.Tenant;
 import com.wherelee.helpdesk.tenant.TenantRepository;
 import com.wherelee.helpdesk.tenant.TenantScope;
 import com.wherelee.helpdesk.wiki.JobStatus;
@@ -76,6 +77,21 @@ class PlatformServiceTest {
                         () -> platformService.deletionStatus(created.id()));
             }
             assertThat(job.state()).isEqualTo(JobStatus.State.DONE);
+            assertThat(TenantContext.callWith(
+                    TenantScope.platform(PLATFORM), () -> tenants.findById(created.id())))
+                    .get()
+                    .extracting(Tenant::status)
+                    .isEqualTo("DELETED");
+            JobStatus.Snapshot purge = TenantContext.callWith(
+                    TenantScope.platform(PLATFORM),
+                    () -> platformService.purgeTenant(created.id(), slug));
+            for (int i = 0; i < 50 && purge.state() == JobStatus.State.RUNNING; i++) {
+                Thread.sleep(100);
+                purge = TenantContext.callWith(
+                        TenantScope.platform(PLATFORM),
+                        () -> platformService.deletionStatus(created.id()));
+            }
+            assertThat(purge.state()).isEqualTo(JobStatus.State.DONE);
             assertThat(TenantContext.callWith(
                     TenantScope.platform(PLATFORM), () -> tenants.findById(created.id()))).isEmpty();
         } finally {

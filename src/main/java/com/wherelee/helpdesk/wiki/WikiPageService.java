@@ -1,6 +1,8 @@
 package com.wherelee.helpdesk.wiki;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.wherelee.helpdesk.outbox.OutboxRepository;
 import com.wherelee.helpdesk.tenant.TenantContext;
 import com.wherelee.helpdesk.tenant.TenantScope;
@@ -55,9 +57,12 @@ public class WikiPageService {
                     request.title(),
                     normalizeVisibility(request.visibility()),
                     scope.userId(),
-                    Instant.now()
+                    null
             );
             insertSections(scope.tenantId(), page.id(), request.sections());
+            repository.updatePageStatus(page.id(), "DRAFT", null);
+            saveVersion(scope, page.id(), "DRAFT", request.title(),
+                    normalizeVisibility(request.visibility()), request.sections());
             audit(scope, "wiki.page.create", page.id(), Map.of("title", request.title()));
             enqueueIndex(scope.tenantId(), page.id());
             return page.id();
@@ -75,9 +80,12 @@ public class WikiPageService {
 
         transactionTemplate.executeWithoutResult(status -> {
             repository.updatePage(
-                    pageId, request.title(), normalizeVisibility(request.visibility()), Instant.now());
+                    pageId, request.title(), normalizeVisibility(request.visibility()), null);
             repository.deleteSections(pageId);
             insertSections(scope.tenantId(), pageId, request.sections());
+            repository.updatePageStatus(pageId, "DRAFT", null);
+            saveVersion(scope, pageId, "DRAFT", request.title(),
+                    normalizeVisibility(request.visibility()), request.sections());
             audit(scope, "wiki.page.update", pageId, Map.of("title", request.title()));
             enqueueIndex(scope.tenantId(), pageId);
         });
@@ -99,6 +107,60 @@ public class WikiPageService {
         repository.findPage(pageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "page_not_found"));
         return indexService.indexPage(pageId);
+    }
+
+    public List<WikiDtos.PageVersionView> versions(UUID pageId) {
+        requireAdmin();
+        repository.findPage(pageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "page_not_found"));
+        return repository.listPageVersions(pageId).stream()
+                .map(WikiDtos.PageVersionView::of)
+                .toList();
+    }
+
+    public WikiDtos.PageVersionDetail version(UUID pageId, int version) {
+        requireAdmin();
+        repository.findPage(pageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "page_not_found"));
+        WikiPageVersion snapshot = repository.findPageVersion(pageId, version)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "version_not_found"));
+        return new WikiDtos.PageVersionDetail(
+                WikiDtos.PageVersionView.of(snapshot), parseSections(snapshot.sectionsJson()));
+    }
+
+    public WikiDtos.PageDetail rollback(UUID pageId, int version) {
+        TenantScope scope = requireAdmin();
+        repository.findPage(pageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "page_not_found"));
+        WikiPageVersion snapshot = repository.findPageVersion(pageId, version)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "version_not_found"));
+        List<WikiPageDtos.SectionInput> sections = parseSections(snapshot.sectionsJson());
+        if (sections.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "version_has_no_sections");
+        }
+        transactionTemplate.executeWithoutResult(status -> {
+            repository.updatePage(pageId, snapshot.title(), snapshot.visibility(), null);
+            repository.updatePageStatus(pageId, "PUBLISHED", Instant.now());
+            repository.deleteSections(pageId);
+            insertSections(scope.tenantId(), pageId, sections);
+            saveVersion(scope, pageId, "PUBLISHED", snapshot.title(), snapshot.visibility(), sections);
+            audit(scope, "wiki.page.rollback", pageId,
+                    Map.of("version", version, "title", snapshot.title()));
+            enqueueIndex(scope.tenantId(), pageId);
+        });
+        return detail(pageId);
+    }
+
+    public WikiDtos.PageDetail submit(UUID pageId) {
+        return changeStatus(pageId, "REVIEW", "wiki.page.submit", false);
+    }
+
+    public WikiDtos.PageDetail approve(UUID pageId) {
+        return changeStatus(pageId, "PUBLISHED", "wiki.page.approve", true);
+    }
+
+    public WikiDtos.PageDetail reject(UUID pageId) {
+        return changeStatus(pageId, "DRAFT", "wiki.page.reject", false);
     }
 
     public int importQuestions(List<WikiPageDtos.ImportQuestion> questions, boolean replace) {
@@ -134,6 +196,52 @@ public class WikiPageService {
             repository.createSection(
                     tenantId, pageId, seq++, input.heading().trim(), input.content().trim());
         }
+    }
+
+    private void saveVersion(
+            TenantScope scope, UUID pageId, String status, String title,
+            String visibility, List<WikiPageDtos.SectionInput> sections
+    ) {
+        try {
+            String json = objectMapper.writeValueAsString(sections);
+            int version = repository.nextPageVersion(pageId);
+            repository.insertPageVersion(
+                    scope.tenantId(), pageId, version, title, visibility, status, json, scope.userId());
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("version snapshot failed", ex);
+        }
+    }
+
+    private List<WikiPageDtos.SectionInput> parseSections(String json) {
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {
+            });
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("version snapshot is invalid", ex);
+        }
+    }
+
+    private WikiDtos.PageDetail changeStatus(
+            UUID pageId, String targetStatus, String action, boolean reviewed
+    ) {
+        TenantScope scope = requireAdmin();
+        WikiPage page = repository.findPage(pageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "page_not_found"));
+        if ("PUBLISHED".equals(page.status()) && "REVIEW".equals(targetStatus)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "page_already_published");
+        }
+        if ("REVIEW".equals(targetStatus) && !"DRAFT".equals(page.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "invalid_page_status");
+        }
+        if (("PUBLISHED".equals(targetStatus) || "DRAFT".equals(targetStatus))
+                && !"REVIEW".equals(page.status())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "invalid_page_status");
+        }
+        transactionTemplate.executeWithoutResult(status -> {
+            repository.updatePageStatus(pageId, targetStatus, reviewed ? Instant.now() : null);
+            audit(scope, action, pageId, Map.of("status", targetStatus));
+        });
+        return detail(pageId);
     }
 
     private void enqueueIndex(UUID tenantId, UUID pageId) {

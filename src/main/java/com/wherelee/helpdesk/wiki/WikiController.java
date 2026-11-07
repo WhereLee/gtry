@@ -94,6 +94,36 @@ public class WikiController {
         return java.util.Map.of("sections", pageService.reindex(id));
     }
 
+    @GetMapping("/api/wiki/pages/{id}/versions")
+    public List<WikiDtos.PageVersionView> versions(@PathVariable UUID id) {
+        return pageService.versions(id);
+    }
+
+    @GetMapping("/api/wiki/pages/{id}/versions/{version}")
+    public WikiDtos.PageVersionDetail version(@PathVariable UUID id, @PathVariable int version) {
+        return pageService.version(id, version);
+    }
+
+    @PostMapping("/api/wiki/pages/{id}/rollback/{version}")
+    public WikiDtos.PageDetail rollback(@PathVariable UUID id, @PathVariable int version) {
+        return pageService.rollback(id, version);
+    }
+
+    @PostMapping("/api/wiki/pages/{id}/submit")
+    public WikiDtos.PageDetail submit(@PathVariable UUID id) {
+        return pageService.submit(id);
+    }
+
+    @PostMapping("/api/wiki/pages/{id}/approve")
+    public WikiDtos.PageDetail approve(@PathVariable UUID id) {
+        return pageService.approve(id);
+    }
+
+    @PostMapping("/api/wiki/pages/{id}/reject")
+    public WikiDtos.PageDetail reject(@PathVariable UUID id) {
+        return pageService.reject(id);
+    }
+
     @PostMapping("/api/wiki/questions/import")
     public java.util.Map<String, Object> importQuestions(
             @RequestParam(defaultValue = "true") boolean replace,

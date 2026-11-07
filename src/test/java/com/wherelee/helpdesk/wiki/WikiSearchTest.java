@@ -117,6 +117,10 @@ class WikiSearchTest {
         // Page creation now enqueues an outbox event; force indexing here so the
         // search assertions are deterministic without waiting for the consumer.
         TenantContext.runWith(admin, () -> pageService.reindex(pageId));
+        TenantContext.runWith(admin, () -> {
+            pageService.submit(pageId);
+            pageService.approve(pageId);
+        });
 
         try {
             assertThat(created.sections()).hasSize(1);
@@ -137,7 +141,7 @@ class WikiSearchTest {
                     jdbc.queryForObject(
                             "SELECT count(*) FROM audit_log WHERE target_id = ?",
                             Integer.class, pageId.toString()));
-            assertThat(auditRows).isEqualTo(2);
+            assertThat(auditRows).isEqualTo(4);
         } finally {
             TenantContext.runWith(admin, () -> pageService.delete(pageId));
         }

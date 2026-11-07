@@ -49,6 +49,18 @@ public class WikiRepository {
             0
     );
 
+    private static final RowMapper<WikiPageVersion> VERSION_MAPPER = (rs, rowNum) -> new WikiPageVersion(
+            rs.getObject("id", UUID.class),
+            rs.getObject("page_id", UUID.class),
+            rs.getInt("version"),
+            rs.getString("title"),
+            rs.getString("visibility"),
+            rs.getString("status"),
+            rs.getString("sections"),
+            rs.getObject("created_by", UUID.class),
+            rs.getTimestamp("created_at").toInstant()
+    );
+
     private final JdbcTemplate jdbc;
 
     public WikiRepository(JdbcTemplate jdbc) {
@@ -198,7 +210,8 @@ public class WikiRepository {
                 FROM wiki_chunk c
                 JOIN wiki_section s ON s.id = c.section_id
                 JOIN wiki_page p ON p.id = c.page_id
-                WHERE (? OR p.visibility = 'PUBLIC')
+                WHERE p.status = 'PUBLISHED'
+                  AND (? OR p.visibility = 'PUBLIC')
                 ORDER BY c.embedding <=> ?::vector
                 LIMIT ?
                 """, CANDIDATE_MAPPER, embedding, includeInternal, embedding, limit);
@@ -213,6 +226,7 @@ public class WikiRepository {
                 JOIN wiki_section s ON s.id = c.section_id
                 JOIN wiki_page p ON p.id = c.page_id
                 WHERE c.tsv @@ to_tsquery('simple', ?)
+                  AND p.status = 'PUBLISHED'
                   AND (? OR p.visibility = 'PUBLIC')
                 ORDER BY score DESC
                 LIMIT ?
@@ -271,7 +285,50 @@ public class WikiRepository {
                 UPDATE wiki_page
                 SET title = ?, visibility = ?, last_reviewed_at = ?, updated_at = now()
                 WHERE id = ?
-                """, title, visibility, Timestamp.from(reviewedAt), pageId);
+                """, title, visibility, reviewedAt == null ? null : Timestamp.from(reviewedAt), pageId);
+    }
+
+    public int updatePageStatus(UUID pageId, String status, Instant reviewedAt) {
+        return jdbc.update("""
+                UPDATE wiki_page
+                SET status = ?, last_reviewed_at = COALESCE(?, last_reviewed_at), updated_at = now()
+                WHERE id = ?
+                """, status, reviewedAt == null ? null : Timestamp.from(reviewedAt), pageId);
+    }
+
+    public int nextPageVersion(UUID pageId) {
+        Integer next = jdbc.queryForObject("""
+                SELECT COALESCE(MAX(version), 0) + 1 FROM wiki_page_version WHERE page_id = ?
+                """, Integer.class, pageId);
+        return next == null ? 1 : next;
+    }
+
+    public void insertPageVersion(
+            UUID tenantId, UUID pageId, int version, String title, String visibility,
+            String status, String sectionsJson, UUID createdBy
+    ) {
+        jdbc.update("""
+                INSERT INTO wiki_page_version
+                    (tenant_id, page_id, version, title, visibility, status, sections, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?)
+                """, tenantId, pageId, version, title, visibility, status, sectionsJson, createdBy);
+    }
+
+    public List<WikiPageVersion> listPageVersions(UUID pageId) {
+        return jdbc.query("""
+                SELECT id, page_id, version, title, visibility, status, sections, created_by, created_at
+                FROM wiki_page_version
+                WHERE page_id = ?
+                ORDER BY version DESC
+                """, VERSION_MAPPER, pageId);
+    }
+
+    public Optional<WikiPageVersion> findPageVersion(UUID pageId, int version) {
+        return jdbc.query("""
+                SELECT id, page_id, version, title, visibility, status, sections, created_by, created_at
+                FROM wiki_page_version
+                WHERE page_id = ? AND version = ?
+                """, VERSION_MAPPER, pageId, version).stream().findFirst();
     }
 
     public void deleteSections(UUID pageId) {

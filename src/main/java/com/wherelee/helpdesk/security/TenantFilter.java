@@ -1,6 +1,8 @@
 package com.wherelee.helpdesk.security;
 
 import com.wherelee.helpdesk.tenant.TenantContext;
+import com.wherelee.helpdesk.tenant.Tenant;
+import com.wherelee.helpdesk.tenant.TenantRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,10 +19,16 @@ public class TenantFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final TokenRevocationService revocationService;
+    private final TenantRepository tenantRepository;
 
-    public TenantFilter(JwtService jwtService, TokenRevocationService revocationService) {
+    public TenantFilter(
+            JwtService jwtService,
+            TokenRevocationService revocationService,
+            TenantRepository tenantRepository
+    ) {
         this.jwtService = jwtService;
         this.revocationService = revocationService;
+        this.tenantRepository = tenantRepository;
     }
 
     @Override
@@ -48,6 +56,15 @@ public class TenantFilter extends OncePerRequestFilter {
             if (revocationService.isRevoked(parsed.jti())) {
                 unauthorized(response, "token_revoked");
                 return;
+            }
+            if (!parsed.scope().platformAdmin()) {
+                String tenantStatus = tenantRepository.findById(parsed.scope().tenantId())
+                        .map(Tenant::status)
+                        .orElse("DELETED");
+                if (!"ACTIVE".equals(tenantStatus)) {
+                    unauthorized(response, "tenant_inactive");
+                    return;
+                }
             }
             TenantContext.set(parsed.scope());
             filterChain.doFilter(request, response);
