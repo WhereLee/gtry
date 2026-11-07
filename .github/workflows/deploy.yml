@@ -1,0 +1,44 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: true
+        default: main
+
+jobs:
+  deploy:
+    name: deploy to production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - run: mvn -B -DskipTests package
+      - name: Upload jar and restart
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          echo "$SSH_KEY" > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+          scp -i /tmp/deploy_key -o StrictHostKeyChecking=no \
+            target/helpdesk-0.1.0.jar "$SSH_USER@$SSH_HOST:/opt/helpdesk/app/helpdesk.jar"
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" \
+            "cd /opt/helpdesk && sudo docker compose up -d --build"
+      - name: Health check
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" \
+            'for i in $(seq 1 40); do curl -fsS http://127.0.0.1:8091/actuator/health && exit 0; sleep 2; done; exit 1'
