@@ -193,6 +193,8 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8091/api/admin/eval?sample
 
 真实问题盲测：见 [真实盲测](docs/真实盲测.md)，用 `tools\import-eval.ps1` 导入 CSV 后以 `kind=REAL` 评测。
 注入防护、引用裁剪、重试降级与评测口径见 [AI 可靠性](docs/AI可靠性.md)。
+部署、排障、发布回滚见 [运行手册](docs/运行手册.md)，备份恢复见
+[备份恢复演练](docs/备份恢复演练.md)。
 
 索引状态与过期页面：
 
