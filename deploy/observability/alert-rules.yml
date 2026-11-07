@@ -1,0 +1,58 @@
+groups:
+  - name: helpdesk
+    rules:
+      - alert: HelpdeskLlmFallback
+        expr: increase(helpdesk_llm_fallback_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM 出现降级"
+          description: "过去 5 分钟发生 {{ $value }} 次 LLM 降级，检查 DeepSeek 状态和网络。"
+
+      - alert: HelpdeskAiErrorRate
+        expr: |
+          sum(rate(helpdesk_ai_stream_total{result="error"}[5m]))
+          /
+          clamp_min(sum(rate(helpdesk_ai_stream_total[5m])), 0.001)
+          > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AI 流式错误率超过 5%"
+          description: "当前 AI 错误率 {{ $value | humanizePercentage }}。"
+
+      - alert: HelpdeskHttpP95
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_server_requests_seconds_bucket[5m])) by (le)
+          ) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP p95 超过 1.5s"
+          description: "当前 p95 {{ $value }}s。"
+
+      - alert: HelpdeskJvmHeap
+        expr: |
+          jvm_memory_used_bytes{area="heap"}
+          /
+          clamp_min(jvm_memory_max_bytes{area="heap"}, 1)
+          > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM 堆使用率超过 85%"
+          description: "检查堆、GC 和流量。"
+
+      - alert: HelpdeskSlaBreaches
+        expr: increase(helpdesk_sla_breaches_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "出现 SLA 超时工单"
+          description: "过去 10 分钟新增 {{ $value }} 个 SLA 超时工单。"

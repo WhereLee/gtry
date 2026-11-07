@@ -10,6 +10,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.test.context.TestPropertySource;
 
 import java.util.UUID;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -40,7 +41,8 @@ class TenantIsolationTest {
         Ticket ticket = TenantContext.callWith(
                 TenantScope.tenant(ACME),
                 () -> tickets.create(ACME, "isolation-test", "only acme can see this",
-                        "NORMAL", "OTHER", "RULE", "test", null, null, null)
+                        "NORMAL", "OTHER", "RULE", "test", null, null, null,
+                        Instant.now().plusSeconds(3600))
         );
         try {
             assertThat(TenantContext.callWith(TenantScope.tenant(ACME),
@@ -59,7 +61,8 @@ class TenantIsolationTest {
         assertThatThrownBy(() -> TenantContext.callWith(
                 TenantScope.tenant(ACME),
                 () -> tickets.create(CLOUDWISE, "cross-tenant", "should be rejected",
-                        "NORMAL", "OTHER", "RULE", "test", null, null, null)
+                        "NORMAL", "OTHER", "RULE", "test", null, null, null,
+                        Instant.now().plusSeconds(3600))
         )).isInstanceOf(DataAccessException.class);
     }
 

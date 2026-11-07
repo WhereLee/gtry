@@ -4,6 +4,7 @@ import com.wherelee.helpdesk.config.HelpdeskProperties;
 import com.wherelee.helpdesk.wiki.WikiHit;
 import com.wherelee.helpdesk.wiki.WikiSearchResult;
 import com.wherelee.helpdesk.wiki.WikiSearchService;
+import com.wherelee.helpdesk.tool.ToolOrchestrator;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +26,7 @@ class RagServiceTest {
     private final WikiSearchService searchService = mock(WikiSearchService.class);
     private final LlmClient llmClient = mock(LlmClient.class);
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+    private final ToolOrchestrator toolOrchestrator = mock(ToolOrchestrator.class);
 
     @Test
     void returnsOnlySnippetsTheModelActuallyCited() {
@@ -55,8 +57,27 @@ class RagServiceTest {
         assertThat(meterRegistry.counter("helpdesk_llm_fallback_total").count()).isEqualTo(1.0);
     }
 
+    @Test
+    void returnsDisabledMessageWhenTenantAiIsOff() {
+        List<String> tokens = new ArrayList<>();
+
+        RagService.RagResult result = service(false).answer("问题", tokens::add);
+
+        assertThat(String.join("", tokens)).contains("AI 建议已关闭");
+        assertThat(result.tokens()).isGreaterThan(0);
+    }
+
     private RagService service() {
-        return new RagService(searchService, llmClient, new HelpdeskProperties(), meterRegistry);
+        return service(true);
+    }
+
+    private RagService service(boolean enabled) {
+        TenantAiConfigService aiConfig = mock(TenantAiConfigService.class);
+        when(aiConfig.resolveCurrentOrDefault()).thenReturn(
+                new TenantAiConfigRepository.Config(null, "mock", 5, "", enabled));
+        return new RagService(
+                searchService, llmClient, aiConfig, toolOrchestrator,
+                new HelpdeskProperties(), meterRegistry);
     }
 
     private WikiSearchResult result(List<WikiHit> hits) {

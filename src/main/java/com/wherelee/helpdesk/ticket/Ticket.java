@@ -20,6 +20,10 @@ public record Ticket(
         Integer csatRating,
         String csatComment,
         Instant csatAt,
+        Instant firstResponseAt,
+        Instant resolvedAt,
+        Instant slaDueAt,
+        boolean slaBreached,
         UUID assigneeId,
         Instant createdAt,
         Instant updatedAt

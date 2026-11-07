@@ -57,6 +57,10 @@ public final class TicketDtos {
             Integer csatRating,
             String csatComment,
             Instant csatAt,
+            Instant firstResponseAt,
+            Instant resolvedAt,
+            Instant slaDueAt,
+            boolean slaBreached,
             UUID assigneeId,
             Instant createdAt,
             Instant updatedAt
@@ -67,6 +71,7 @@ public final class TicketDtos {
                     ticket.priority(), ticket.category(), ticket.triageSource(), ticket.triageReason(),
                     ticket.customerName(), ticket.customerEmail(),
                     ticket.csatRating(), ticket.csatComment(), ticket.csatAt(),
+                    ticket.firstResponseAt(), ticket.resolvedAt(), ticket.slaDueAt(), ticket.slaBreached(),
                     ticket.assigneeId(), ticket.createdAt(), ticket.updatedAt()
             );
         }

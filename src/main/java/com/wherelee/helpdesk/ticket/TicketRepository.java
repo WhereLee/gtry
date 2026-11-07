@@ -30,6 +30,10 @@ public class TicketRepository {
             rs.getObject("csat_rating", Integer.class),
             rs.getString("csat_comment"),
             rs.getTimestamp("csat_at") == null ? null : rs.getTimestamp("csat_at").toInstant(),
+            rs.getTimestamp("first_response_at") == null ? null : rs.getTimestamp("first_response_at").toInstant(),
+            rs.getTimestamp("resolved_at") == null ? null : rs.getTimestamp("resolved_at").toInstant(),
+            rs.getTimestamp("sla_due_at") == null ? null : rs.getTimestamp("sla_due_at").toInstant(),
+            rs.getBoolean("sla_breached"),
             rs.getObject("assignee_id", UUID.class),
             rs.getTimestamp("created_at").toInstant(),
             rs.getTimestamp("updated_at").toInstant()
@@ -57,19 +61,20 @@ public class TicketRepository {
     public Ticket create(
             UUID tenantId, String subject, String description, String priority,
             String category, String triageSource, String triageReason, UUID assigneeId,
-            String customerName, String customerEmail
+            String customerName, String customerEmail, Instant slaDueAt
     ) {
         return jdbc.queryForObject("""
                 INSERT INTO ticket
                     (tenant_id, subject, description, priority, category,
-                     triage_source, triage_reason, assignee_id, customer_name, customer_email)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     triage_source, triage_reason, assignee_id, customer_name, customer_email, sla_due_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id, tenant_id, channel_id, external_ref, subject, description,
                           status, priority, category, triage_source, triage_reason,
                           customer_name, customer_email, csat_rating, csat_comment, csat_at,
+                          first_response_at, resolved_at, sla_due_at, sla_breached,
                           assignee_id, created_at, updated_at
                 """, MAPPER, tenantId, subject, description, priority, category,
-                triageSource, triageReason, assigneeId, customerName, customerEmail);
+                triageSource, triageReason, assigneeId, customerName, customerEmail, Timestamp.from(slaDueAt));
     }
 
     public Optional<Ticket> findById(UUID id) {
@@ -77,6 +82,7 @@ public class TicketRepository {
                 SELECT id, tenant_id, channel_id, external_ref, subject, description,
                        status, priority, category, triage_source, triage_reason,
                        customer_name, customer_email, csat_rating, csat_comment, csat_at,
+                       first_response_at, resolved_at, sla_due_at, sla_breached,
                        assignee_id, created_at, updated_at
                 FROM ticket WHERE id = ?
                 """, MAPPER, id).stream().findFirst();
@@ -88,6 +94,7 @@ public class TicketRepository {
                     SELECT id, tenant_id, channel_id, external_ref, subject, description,
                            status, priority, category, triage_source, triage_reason,
                            customer_name, customer_email, csat_rating, csat_comment, csat_at,
+                           first_response_at, resolved_at, sla_due_at, sla_breached,
                            assignee_id, created_at, updated_at
                     FROM ticket ORDER BY created_at DESC LIMIT ?
                     """, MAPPER, limit);
@@ -96,6 +103,7 @@ public class TicketRepository {
                 SELECT id, tenant_id, channel_id, external_ref, subject, description,
                        status, priority, category, triage_source, triage_reason,
                        customer_name, customer_email, csat_rating, csat_comment, csat_at,
+                       first_response_at, resolved_at, sla_due_at, sla_breached,
                        assignee_id, created_at, updated_at
                 FROM ticket WHERE status = ? ORDER BY created_at DESC LIMIT ?
                 """, MAPPER, status, limit);
@@ -105,6 +113,54 @@ public class TicketRepository {
         return jdbc.update("""
                 UPDATE ticket SET status = ?, updated_at = now() WHERE id = ?
                 """, status, id) > 0;
+    }
+
+    public void markFirstResponse(UUID id) {
+        jdbc.update("""
+                UPDATE ticket
+                SET first_response_at = COALESCE(first_response_at, now()), updated_at = now()
+                WHERE id = ?
+                """, id);
+    }
+
+    public void markResolved(UUID id) {
+        jdbc.update("""
+                UPDATE ticket SET resolved_at = now(), updated_at = now() WHERE id = ?
+                """, id);
+    }
+
+    public void clearResolved(UUID id) {
+        jdbc.update("""
+                UPDATE ticket SET resolved_at = NULL, updated_at = now() WHERE id = ?
+                """, id);
+    }
+
+    public List<Breach> markBreached() {
+        return jdbc.query("""
+                UPDATE ticket
+                SET sla_breached = true, updated_at = now()
+                WHERE status IN ('OPEN', 'PENDING')
+                  AND sla_due_at IS NOT NULL
+                  AND sla_due_at < now()
+                  AND sla_breached = false
+                RETURNING id, tenant_id
+                """, (rs, rowNum) -> new Breach(
+                rs.getObject("id", UUID.class),
+                rs.getObject("tenant_id", UUID.class)));
+    }
+
+    public List<Ticket> listBreached(int limit) {
+        return jdbc.query("""
+                SELECT id, tenant_id, channel_id, external_ref, subject, description,
+                       status, priority, category, triage_source, triage_reason,
+                       customer_name, customer_email, csat_rating, csat_comment, csat_at,
+                       first_response_at, resolved_at, sla_due_at, sla_breached,
+                       assignee_id, created_at, updated_at
+                FROM ticket
+                WHERE sla_breached = true AND status IN ('OPEN', 'PENDING')
+                ORDER BY sla_due_at
+                LIMIT ?
+                """, MAPPER, limit);
     }
 
     public boolean updateTriage(
@@ -227,5 +283,8 @@ public class TicketRepository {
         Timestamp ts = jdbc.queryForObject(
                 "SELECT created_at FROM ticket WHERE id = ?", Timestamp.class, ticketId);
         return ts == null ? null : ts.toInstant();
+    }
+
+    public record Breach(UUID id, UUID tenantId) {
     }
 }

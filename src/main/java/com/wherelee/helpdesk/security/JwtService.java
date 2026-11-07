@@ -32,6 +32,7 @@ public class JwtService {
     public String issue(UUID tenantId, UUID userId, String email, String role) {
         Instant now = Instant.now();
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(userId.toString())
                 .claim("tid", tenantId.toString())
                 .claim("email", email)
@@ -43,6 +44,10 @@ public class JwtService {
     }
 
     public TenantScope parse(String token) {
+        return parseDetails(token).scope();
+    }
+
+    public ParsedToken parseDetails(String token) {
         Claims claims = Jwts.parser()
                 .verifyWith(key)
                 .build()
@@ -53,6 +58,12 @@ public class JwtService {
         String email = claims.get("email", String.class);
         String role = claims.get("role", String.class);
         boolean platformAdmin = "PLATFORM_ADMIN".equals(role);
-        return new TenantScope(tenantId, userId, email, role, platformAdmin);
+        TenantScope scope = new TenantScope(tenantId, userId, email, role, platformAdmin);
+        String jti = claims.getId() == null ? "legacy" : claims.getId();
+        Instant expiresAt = claims.getExpiration().toInstant();
+        return new ParsedToken(scope, jti, expiresAt);
+    }
+
+    public record ParsedToken(TenantScope scope, String jti, Instant expiresAt) {
     }
 }

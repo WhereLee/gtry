@@ -38,6 +38,11 @@ public class TicketController {
         return ticketService.list(status);
     }
 
+    @GetMapping("/breached")
+    public List<TicketDtos.TicketView> breached() {
+        return ticketService.listBreached();
+    }
+
     @GetMapping("/{id}")
     public TicketDtos.TicketDetail get(@PathVariable UUID id) {
         return ticketService.get(id);

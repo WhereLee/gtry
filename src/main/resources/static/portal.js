@@ -95,6 +95,7 @@ function renderTicket(ticket) {
     }
     const closed = ticket.status === 'CLOSED';
     $('p-reply-form').classList.toggle('hidden', closed);
+    $('p-upload-form').classList.toggle('hidden', closed);
     if (closed) {
         $('p-csat').classList.remove('hidden');
         if (ticket.csatRating) {
@@ -110,6 +111,71 @@ function renderTicket(ticket) {
         $('p-csat').classList.add('hidden');
     }
     renderStars();
+    loadAttachments().catch(() => {});
+}
+
+async function loadAttachments() {
+    if (!state.ticketId || !state.token) return;
+    const list = await portalApi(`/api/public/tickets/${state.ticketId}/attachments`, {}, true);
+    const box = $('p-attachments');
+    box.innerHTML = '';
+    box.classList.toggle('hidden', !list.length);
+    for (const attachment of list) {
+        const row = document.createElement('div');
+        row.className = 'attachment-row';
+        const name = document.createElement('span');
+        name.textContent = `${attachment.filename} · ${formatSize(attachment.sizeBytes)}`;
+        const button = document.createElement('button');
+        button.className = 'link';
+        button.textContent = '下载';
+        button.onclick = () => downloadAttachment(attachment.id, attachment.filename);
+        row.append(name, button);
+        box.appendChild(row);
+    }
+}
+
+async function uploadAttachment(event) {
+    event.preventDefault();
+    const file = $('p-file').files[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file);
+    try {
+        await fetch(`/api/public/tickets/${state.ticketId}/attachments`, {
+            method: 'POST',
+            headers: { 'X-Ticket-Token': state.token },
+            body: form,
+        }).then(async (response) => {
+            if (!response.ok) throw new Error(await response.text());
+        });
+        $('p-file').value = '';
+        await loadAttachments();
+    } catch (error) {
+        alert(friendlyError(error));
+    }
+}
+
+async function downloadAttachment(attachmentId, filename) {
+    const response = await fetch(
+        `/api/public/tickets/${state.ticketId}/attachments/${attachmentId}`,
+        { headers: { 'X-Ticket-Token': state.token } }
+    );
+    if (!response.ok) throw new Error(await response.text());
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function renderStars() {
@@ -198,6 +264,7 @@ $('portal-channel').textContent = `渠道：${channelKey}`;
 $('create-form').addEventListener('submit', createTicket);
 $('lookup-form').addEventListener('submit', lookup);
 $('p-reply-form').addEventListener('submit', reply);
+$('p-upload-form').addEventListener('submit', uploadAttachment);
 $('p-csat-submit').addEventListener('click', submitCsat);
 $('p-refresh').addEventListener('click', () => loadTicket(state.ticketId, state.token).catch((error) => alert(friendlyError(error))));
 $('p-copy').addEventListener('click', () => {

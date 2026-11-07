@@ -4,6 +4,7 @@ import com.wherelee.helpdesk.config.HelpdeskProperties;
 import com.wherelee.helpdesk.wiki.WikiHit;
 import com.wherelee.helpdesk.wiki.WikiSearchResult;
 import com.wherelee.helpdesk.wiki.WikiSearchService;
+import com.wherelee.helpdesk.tool.ToolOrchestrator;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.UncheckedIOException;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 @Service
@@ -31,9 +33,13 @@ public class RagService {
 
     private static final String FALLBACK_MESSAGE =
             "AI 服务暂时不可用，请稍后重试，或直接转人工客服处理。";
+    private static final String DISABLED_MESSAGE =
+            "AI 建议已关闭，请转人工客服处理。";
 
     private final WikiSearchService searchService;
     private final LlmClient llmClient;
+    private final TenantAiConfigService tenantAiConfig;
+    private final ToolOrchestrator toolOrchestrator;
     private final HelpdeskProperties.Rag config;
     private final HelpdeskProperties.Wiki wikiConfig;
     private final Timer llmTimer;
@@ -44,11 +50,15 @@ public class RagService {
     public RagService(
             WikiSearchService searchService,
             LlmClient llmClient,
+            TenantAiConfigService tenantAiConfig,
+            ToolOrchestrator toolOrchestrator,
             HelpdeskProperties properties,
             MeterRegistry meterRegistry
     ) {
         this.searchService = searchService;
         this.llmClient = llmClient;
+        this.tenantAiConfig = tenantAiConfig;
+        this.toolOrchestrator = toolOrchestrator;
         this.config = properties.getRag();
         this.wikiConfig = properties.getWiki();
         this.llmTimer = Timer.builder("helpdesk_llm_duration")
@@ -59,17 +69,30 @@ public class RagService {
     }
 
     public List<WikiHit> retrieve(String question) {
+        int topK = safeTopK(tenantAiConfig.resolveCurrentOrDefault().topK());
         return searchService.search(
-                question, config.getTopK(), wikiConfig.isIncludeInternalDefault()).hits();
+                question, topK, wikiConfig.isIncludeInternalDefault()).hits();
     }
 
     public RagResult answer(String question, Consumer<String> onToken) {
+        return answer(null, question, onToken);
+    }
+
+    public RagResult answer(UUID ticketId, String question, Consumer<String> onToken) {
+        TenantAiConfigRepository.Config aiConfig = tenantAiConfig.resolveCurrentOrDefault();
+        if (!aiConfig.enabled()) {
+            for (int i = 0; i < DISABLED_MESSAGE.length(); i++) {
+                onToken.accept(String.valueOf(DISABLED_MESSAGE.charAt(i)));
+            }
+            return new RagResult(
+                    Math.max(1, DISABLED_MESSAGE.length() / 2), List.of(), List.of(), "disabled");
+        }
         String safeQuestion = PiiRedactor.redact(question);
         if (!safeQuestion.equals(question)) {
             piiRedactionCounter.increment();
         }
         WikiSearchResult search = searchService.search(
-                safeQuestion, config.getTopK(), wikiConfig.isIncludeInternalDefault());
+                safeQuestion, safeTopK(aiConfig.topK()), wikiConfig.isIncludeInternalDefault());
         List<WikiHit> hits = search.hits();
 
         StringBuilder userPrompt = new StringBuilder("【知识库片段】\n");
@@ -81,6 +104,12 @@ public class RagService {
         if (hits.isEmpty()) {
             userPrompt.append("（没有检索到相关片段）\n");
         }
+        if (ticketId != null) {
+            String toolResult = toolOrchestrator.executeOrderLookup(ticketId, safeQuestion);
+            if (!toolResult.isBlank()) {
+                userPrompt.append("\n【工具结果】\n").append(toolResult).append('\n');
+            }
+        }
         userPrompt.append("\n【客户问题】\n").append(safeQuestion);
 
         StringBuilder answer = new StringBuilder();
@@ -91,9 +120,14 @@ public class RagService {
 
         try {
             long started = System.nanoTime();
+            String systemPrompt = SYSTEM_PROMPT;
+            if (aiConfig.extraInstructions() != null && !aiConfig.extraInstructions().isBlank()) {
+                systemPrompt += "\n【租户补充规则】\n" + aiConfig.extraInstructions();
+            }
             int tokens = llmClient.stream(
                     new LlmRequest(
-                            SYSTEM_PROMPT,
+                            aiConfig.model(),
+                            systemPrompt,
                             userPrompt.toString(),
                             hits.stream().map(WikiHit::content).toList()
                     ),
@@ -121,5 +155,9 @@ public class RagService {
     }
 
     public record RagResult(int tokens, List<WikiHit> allHits, List<WikiHit> citedHits, String traceId) {
+    }
+
+    private int safeTopK(int topK) {
+        return Math.max(1, Math.min(topK, 10));
     }
 }

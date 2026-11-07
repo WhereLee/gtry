@@ -36,6 +36,7 @@ public class TicketService {
 
     private final TicketRepository tickets;
     private final TicketTriageService triageService;
+    private final SlaService slaService;
     private final UserRepository users;
     private final AiFeedbackRepository feedbackRepository;
     private final ApplicationEventPublisher eventPublisher;
@@ -50,6 +51,7 @@ public class TicketService {
     public TicketService(
             TicketRepository tickets,
             TicketTriageService triageService,
+            SlaService slaService,
             UserRepository users,
             AiFeedbackRepository feedbackRepository,
             ApplicationEventPublisher eventPublisher,
@@ -61,6 +63,7 @@ public class TicketService {
     ) {
         this.tickets = tickets;
         this.triageService = triageService;
+        this.slaService = slaService;
         this.users = users;
         this.feedbackRepository = feedbackRepository;
         this.eventPublisher = eventPublisher;
@@ -90,7 +93,7 @@ public class TicketService {
         Ticket ticket = tickets.create(
                 scope.tenantId(), subject, description, effectivePriority,
                 triage.category(), triage.source(), triage.reason(), triage.assigneeId(),
-                customerName, customerEmail);
+                customerName, customerEmail, slaService.dueAt(effectivePriority));
         tickets.addMessage(scope.tenantId(), ticket.id(), "CUSTOMER", null, description, "[]", 0);
         return TicketDtos.TicketView.of(ticket);
     }
@@ -114,6 +117,7 @@ public class TicketService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ticket_not_found"));
         TicketMessage message = tickets.addMessage(
                 scope.tenantId(), id, "AGENT", scope.userId(), content, "[]", 0);
+        tickets.markFirstResponse(id);
         if (!"PENDING".equals(ticket.status())) {
             tickets.updateStatus(id, "PENDING");
         } else {
@@ -151,6 +155,7 @@ public class TicketService {
             tickets.addMessage(
                     scope.tenantId(), ticketId, "AGENT", scope.userId(),
                     message.content(), "[]", 0, "PUBLIC");
+            tickets.markFirstResponse(ticketId);
             if (!"PENDING".equals(ticket.status())) {
                 tickets.updateStatus(ticketId, "PENDING");
             }
@@ -162,6 +167,7 @@ public class TicketService {
             tickets.addMessage(
                     scope.tenantId(), ticketId, "AGENT", scope.userId(),
                     edited, "[]", 0, "PUBLIC");
+            tickets.markFirstResponse(ticketId);
             if (!"PENDING".equals(ticket.status())) {
                 tickets.updateStatus(ticketId, "PENDING");
             }
@@ -217,14 +223,23 @@ public class TicketService {
     }
 
     public TicketDtos.TicketView updateStatus(UUID id, String status) {
-        tickets.findById(id)
+        Ticket ticket = tickets.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ticket_not_found"));
         String normalized = status == null ? "" : status.toUpperCase();
         if (!List.of("OPEN", "PENDING", "CLOSED").contains(normalized)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid_status");
         }
         tickets.updateStatus(id, normalized);
+        if ("CLOSED".equals(normalized)) {
+            tickets.markResolved(id);
+        } else if (ticket.resolvedAt() != null) {
+            tickets.clearResolved(id);
+        }
         return TicketDtos.TicketView.of(tickets.findById(id).orElseThrow());
+    }
+
+    public List<TicketDtos.TicketView> listBreached() {
+        return tickets.listBreached(100).stream().map(TicketDtos.TicketView::of).toList();
     }
 
     public void aiSuggest(UUID ticketId, SseEmitter emitter) {
@@ -242,7 +257,7 @@ public class TicketService {
             String question = buildQuestion(ticket, tickets.listMessages(ticketId));
 
             TokenBuffer buffer = new TokenBuffer(emitter);
-            RagService.RagResult result = ragService.answer(question, buffer::accept);
+            RagService.RagResult result = ragService.answer(ticketId, question, buffer::accept);
             try {
                 buffer.flush();
             } catch (UncheckedIOException | ClientDisconnectedException ignored) {

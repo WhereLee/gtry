@@ -13,6 +13,8 @@ public class HelpdeskProperties {
     private final Rerank rerank = new Rerank();
     private final Wiki wiki = new Wiki();
     private final PublicPortal publicPortal = new PublicPortal();
+    private final Attachments attachments = new Attachments();
+    private final Security security = new Security();
 
     public Jwt getJwt() {
         return jwt;
@@ -44,6 +46,14 @@ public class HelpdeskProperties {
 
     public PublicPortal getPublicPortal() {
         return publicPortal;
+    }
+
+    public Attachments getAttachments() {
+        return attachments;
+    }
+
+    public Security getSecurity() {
+        return security;
     }
 
     public static class Jwt {
@@ -355,6 +365,39 @@ public class HelpdeskProperties {
 
         public void setTokenTtlDays(int tokenTtlDays) {
             this.tokenTtlDays = tokenTtlDays;
+        }
+    }
+
+    public static class Attachments {
+        private String dir = "./data/attachments";
+        private long maxSizeBytes = 10L * 1024 * 1024;
+
+        public String getDir() {
+            return dir;
+        }
+
+        public void setDir(String dir) {
+            this.dir = dir;
+        }
+
+        public long getMaxSizeBytes() {
+            return maxSizeBytes;
+        }
+
+        public void setMaxSizeBytes(long maxSizeBytes) {
+            this.maxSizeBytes = maxSizeBytes;
+        }
+    }
+
+    public static class Security {
+        private int loginRateLimitPerMinute = 10;
+
+        public int getLoginRateLimitPerMinute() {
+            return loginRateLimitPerMinute;
+        }
+
+        public void setLoginRateLimitPerMinute(int loginRateLimitPerMinute) {
+            this.loginRateLimitPerMinute = loginRateLimitPerMinute;
         }
     }
 }

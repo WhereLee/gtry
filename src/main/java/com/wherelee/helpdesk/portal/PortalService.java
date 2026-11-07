@@ -1,6 +1,7 @@
 package com.wherelee.helpdesk.portal;
 
 import com.wherelee.helpdesk.config.HelpdeskProperties;
+import com.wherelee.helpdesk.attachment.AttachmentService;
 import com.wherelee.helpdesk.tenant.TenantContext;
 import com.wherelee.helpdesk.tenant.TenantScope;
 import com.wherelee.helpdesk.ticket.Ticket;
@@ -15,6 +16,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -30,6 +32,7 @@ public class PortalService {
     private final PortalRateLimiter rateLimiter;
     private final TicketService ticketService;
     private final TicketRepository tickets;
+    private final AttachmentService attachments;
     private final HelpdeskProperties.PublicPortal config;
     private final TransactionTemplate transactionTemplate;
 
@@ -38,6 +41,7 @@ public class PortalService {
             PortalRateLimiter rateLimiter,
             TicketService ticketService,
             TicketRepository tickets,
+            AttachmentService attachments,
             HelpdeskProperties properties,
             PlatformTransactionManager transactionManager
     ) {
@@ -45,6 +49,7 @@ public class PortalService {
         this.rateLimiter = rateLimiter;
         this.ticketService = ticketService;
         this.tickets = tickets;
+        this.attachments = attachments;
         this.config = properties.getPublicPortal();
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
@@ -126,6 +131,35 @@ public class PortalService {
                     }
                     tickets.updateCsat(ref.ticketId(), rating, blankToNull(comment));
                 }));
+    }
+
+    public AttachmentService.AttachmentView uploadAttachment(
+            UUID ticketId, String token, MultipartFile file) {
+        PortalRepository.TokenRef ref = resolveToken(ticketId, token);
+        rateLimiter.assertAllowed("token:" + tokenHashPrefix(token));
+        return TenantContext.callWith(TenantScope.tenant(ref.tenantId()),
+                () -> attachments.store(ref.tenantId(), ref.ticketId(), file, "PUBLIC"));
+    }
+
+    public List<AttachmentService.AttachmentView> listAttachments(UUID ticketId, String token) {
+        PortalRepository.TokenRef ref = resolveToken(ticketId, token);
+        rateLimiter.assertAllowed("token:" + tokenHashPrefix(token));
+        return TenantContext.callWith(TenantScope.tenant(ref.tenantId()),
+                () -> attachments.list(ref.ticketId(), true));
+    }
+
+    public AttachmentService.Download downloadAttachment(
+            UUID ticketId, UUID attachmentId, String token) {
+        PortalRepository.TokenRef ref = resolveToken(ticketId, token);
+        rateLimiter.assertAllowed("token:" + tokenHashPrefix(token));
+        return TenantContext.callWith(TenantScope.tenant(ref.tenantId()), () -> {
+            AttachmentService.Download download = attachments.load(attachmentId);
+            if (!download.attachment().ticketId().equals(ref.ticketId())
+                    || !"PUBLIC".equals(download.attachment().visibility())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "attachment_not_found");
+            }
+            return download;
+        });
     }
 
     private PortalRepository.TokenRef resolveToken(UUID ticketId, String token) {

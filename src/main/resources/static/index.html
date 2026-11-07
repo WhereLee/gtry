@@ -38,7 +38,9 @@
             <button id="tab-tickets" class="tab active">工单</button>
             <button id="tab-wiki" class="tab">知识库</button>
             <button id="tab-usage" class="tab">用量</button>
+            <button id="tab-report" class="tab">报表</button>
             <button id="tab-team" class="tab hidden">团队</button>
+            <button id="tab-ai" class="tab hidden">AI 设置</button>
             <button id="tab-platform" class="tab hidden">平台</button>
         </nav>
         <div class="who">
@@ -99,6 +101,13 @@
                     <div><span class="label">客户评分</span><span id="ticket-csat-value"></span></div>
                     <div class="grow"><span id="ticket-csat-comment" class="muted small"></span></div>
                 </div>
+                <div id="ticket-attachments" class="attachments hidden"></div>
+                <div id="ticket-tool-calls" class="attachments hidden"></div>
+                <form id="attachment-form" class="upload-row">
+                    <input id="attachment-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain"/>
+                    <label class="checkbox-row"><input id="attachment-internal" type="checkbox"/> 内部附件</label>
+                    <button type="submit" class="ghost">上传附件</button>
+                </form>
                 <div id="messages" class="messages"></div>
                 <div id="citations" class="citations hidden"></div>
                 <form id="reply-form" class="reply-form">
@@ -178,6 +187,31 @@
                 <span class="muted small">按自然日聚合</span>
             </div>
             <div id="usage-chart" class="chart"></div>
+        </div>
+    </main>
+
+    <main id="report-view" class="page hidden">
+        <div class="page-head">
+            <div>
+                <h2>报表</h2>
+                <div class="muted small">近 30 天工单、SLA、AI 采纳、CSAT 与成本</div>
+            </div>
+            <button id="report-refresh" class="ghost">刷新</button>
+        </div>
+        <div id="report-cards" class="cards"></div>
+        <div class="panel">
+            <div class="panel-head"><h3>分类分布</h3></div>
+            <div class="table-wrap">
+                <table class="table"><thead><tr><th>分类</th><th>数量</th></tr></thead>
+                    <tbody id="report-category"></tbody></table>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-head"><h3>优先级分布</h3></div>
+            <div class="table-wrap">
+                <table class="table"><thead><tr><th>优先级</th><th>数量</th></tr></thead>
+                    <tbody id="report-priority"></tbody></table>
+            </div>
         </div>
     </main>
 
@@ -265,6 +299,33 @@
                 </table>
             </div>
         </div>
+    </main>
+
+    <main id="ai-view" class="page hidden">
+        <div class="page-head">
+            <div>
+                <h2>AI 设置</h2>
+                <div class="muted small">租户级模型、检索 topK、补充规则和 AI 开关</div>
+            </div>
+            <button id="ai-refresh" class="ghost">刷新</button>
+        </div>
+        <form id="ai-form" class="panel">
+            <div class="form-grid">
+                <label>模型<input id="ai-model" maxlength="64"/></label>
+                <label>检索 topK<input id="ai-topk" type="number" min="1" max="10"/></label>
+                <label>AI 开关
+                    <select id="ai-enabled">
+                        <option value="true">启用</option>
+                        <option value="false">关闭（转人工）</option>
+                    </select>
+                </label>
+            </div>
+            <label>租户补充规则
+                <textarea id="ai-extra" rows="5" maxlength="4000"
+                          placeholder="例如：回答时优先说明退货时效；不要承诺具体到账时间。"></textarea>
+            </label>
+            <button type="submit" class="primary">保存 AI 设置</button>
+        </form>
     </main>
 </section>
 

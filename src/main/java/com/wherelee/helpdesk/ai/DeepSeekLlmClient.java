@@ -77,7 +77,8 @@ public class DeepSeekLlmClient implements LlmClient {
 
     private int streamOnce(LlmRequest request, Consumer<String> onToken) throws Exception {
         Map<String, Object> payload = new HashMap<>();
-        payload.put("model", config.getModel());
+        payload.put("model", request.model() == null || request.model().isBlank()
+                ? config.getModel() : request.model());
         payload.put("stream", true);
         payload.put("messages", List.of(
                 Map.of("role", "system", "content", request.systemPrompt()),

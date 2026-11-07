@@ -16,9 +16,11 @@ import java.nio.charset.StandardCharsets;
 public class TenantFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final TokenRevocationService revocationService;
 
-    public TenantFilter(JwtService jwtService) {
+    public TenantFilter(JwtService jwtService, TokenRevocationService revocationService) {
         this.jwtService = jwtService;
+        this.revocationService = revocationService;
     }
 
     @Override
@@ -42,7 +44,12 @@ public class TenantFilter extends OncePerRequestFilter {
             return;
         }
         try {
-            TenantContext.set(jwtService.parse(header.substring(7)));
+            JwtService.ParsedToken parsed = jwtService.parseDetails(header.substring(7));
+            if (revocationService.isRevoked(parsed.jti())) {
+                unauthorized(response, "token_revoked");
+                return;
+            }
+            TenantContext.set(parsed.scope());
             filterChain.doFilter(request, response);
         } catch (Exception ex) {
             unauthorized(response, "invalid_token");

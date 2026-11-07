@@ -82,7 +82,18 @@ async function login(event) {
     await enterApp();
 }
 
-function logout() {
+async function logout() {
+    const token = state.token;
+    if (token) {
+        try {
+            await fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+        } catch (ignored) {
+            // local logout should still proceed
+        }
+    }
     state.token = null;
     state.user = null;
     sessionStorage.removeItem('helpdesk.token');
@@ -103,6 +114,8 @@ async function enterApp() {
     $('portal-link').href = `/portal.html?channel=${channelKey}`;
     $('portal-link').classList.toggle('hidden', state.user.role === 'PLATFORM_ADMIN');
     $('tab-team').classList.toggle('hidden', state.user.role !== 'TENANT_ADMIN');
+    $('tab-ai').classList.toggle('hidden', state.user.role !== 'TENANT_ADMIN');
+    $('tab-report').classList.toggle('hidden', state.user.role === 'PLATFORM_ADMIN');
     $('tab-platform').classList.toggle('hidden', state.user.role !== 'PLATFORM_ADMIN');
     initTriageOptions();
     await Promise.all([loadUsage(), loadTickets(), loadAgents()]);
@@ -169,6 +182,9 @@ function renderTickets() {
     for (const ticket of state.tickets) {
         const li = document.createElement('li');
         li.className = 'ticket' + (ticket.id === state.activeId ? ' active' : '');
+        if (ticket.slaBreached) {
+            li.classList.add('sla-breached');
+        }
         li.innerHTML = `
             <div class="title"></div>
             <div class="sub"><span></span><span></span><span></span></div>`;
@@ -210,13 +226,100 @@ async function openTicket(id) {
     $('ticket-meta').textContent =
         `${detail.ticket.status} · ${priorityLabel(detail.ticket.priority)} · ` +
         `${categoryLabel(detail.ticket.category)}` +
-        `${customer ? ' · ' + customer : ''} · ${new Date(detail.ticket.createdAt).toLocaleString()}`;
+        `${customer ? ' · ' + customer : ''}` +
+        `${detail.ticket.slaBreached ? ' · SLA 已超时' : ''}` +
+        ` · ${new Date(detail.ticket.createdAt).toLocaleString()}`;
     renderTriage(detail.ticket);
     renderCsat(detail.ticket);
     renderMessages(detail.messages);
+    loadTicketAttachments().catch(showApiError);
+    loadToolCalls().catch(showApiError);
     $('citations').classList.add('hidden');
     $('reply-content').value = '';
     $('internal-note').checked = false;
+}
+
+async function loadTicketAttachments() {
+    if (!state.activeId) return;
+    const list = await api(`/api/tickets/${state.activeId}/attachments`);
+    const box = $('ticket-attachments');
+    box.innerHTML = '';
+    box.classList.toggle('hidden', !list.length);
+    for (const attachment of list) {
+        const row = document.createElement('div');
+        row.className = 'attachment-row';
+        const name = document.createElement('span');
+        name.textContent = `${attachment.filename} · ${formatSize(attachment.sizeBytes)} · ${attachment.visibility}`;
+        const button = document.createElement('button');
+        button.className = 'link';
+        button.textContent = '下载';
+        button.onclick = () => downloadAttachment(attachment.id, attachment.filename).catch(showApiError);
+        row.append(name, button);
+        box.appendChild(row);
+    }
+}
+
+async function loadToolCalls() {
+    if (!state.activeId) return;
+    const list = await api(`/api/tickets/${state.activeId}/tool-calls`);
+    const box = $('ticket-tool-calls');
+    box.innerHTML = '';
+    box.classList.toggle('hidden', !list.length);
+    for (const call of list) {
+        const row = document.createElement('div');
+        row.className = 'attachment-row';
+        const text = document.createElement('span');
+        let summary = call.result || '';
+        try {
+            const parsed = JSON.parse(call.result || '{}');
+            summary = parsed.orderNo ? `订单 ${parsed.orderNo} · ${parsed.status}` : summary;
+        } catch (ignored) {
+            // keep raw
+        }
+        text.textContent = `工具 ${call.tool_name} · ${call.status} · ${summary}`;
+        row.appendChild(text);
+        box.appendChild(row);
+    }
+}
+
+async function uploadAttachment(event) {
+    event.preventDefault();
+    if (!state.activeId) return;
+    const file = $('attachment-file').files[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append('file', file);
+    form.append('visibility', $('attachment-internal').checked ? 'INTERNAL' : 'PUBLIC');
+    await fetch(`/api/tickets/${state.activeId}/attachments`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: form,
+    }).then(async (response) => {
+        if (!response.ok) throw new Error(await response.text());
+    });
+    $('attachment-file').value = '';
+    $('attachment-internal').checked = false;
+    await loadTicketAttachments();
+}
+
+async function downloadAttachment(attachmentId, filename) {
+    const response = await fetch(`/api/attachments/${attachmentId}`, { headers: authHeaders() });
+    if (!response.ok) throw new Error(await response.text());
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function renderCsat(ticket) {
@@ -451,16 +554,26 @@ function switchTab(tab) {
     if (tab === 'team' && (!state.user || state.user.role !== 'TENANT_ADMIN')) {
         tab = 'tickets';
     }
+    if (tab === 'ai' && (!state.user || state.user.role !== 'TENANT_ADMIN')) {
+        tab = 'tickets';
+    }
+    if (tab === 'report' && (!state.user || state.user.role === 'PLATFORM_ADMIN')) {
+        tab = 'tickets';
+    }
     state.tab = tab;
     $('tickets-view').classList.toggle('hidden', tab !== 'tickets');
     $('wiki-view').classList.toggle('hidden', tab !== 'wiki');
     $('usage-view').classList.toggle('hidden', tab !== 'usage');
     $('team-view').classList.toggle('hidden', tab !== 'team');
+    $('ai-view').classList.toggle('hidden', tab !== 'ai');
+    $('report-view').classList.toggle('hidden', tab !== 'report');
     $('platform-view').classList.toggle('hidden', tab !== 'platform');
     $('tab-tickets').classList.toggle('active', tab === 'tickets');
     $('tab-wiki').classList.toggle('active', tab === 'wiki');
     $('tab-usage').classList.toggle('active', tab === 'usage');
     $('tab-team').classList.toggle('active', tab === 'team');
+    $('tab-ai').classList.toggle('active', tab === 'ai');
+    $('tab-report').classList.toggle('active', tab === 'report');
     $('tab-platform').classList.toggle('active', tab === 'platform');
     if (tab === 'wiki' && !state.wikiSpaces.length) {
         loadWikiSpaces().catch(showApiError);
@@ -470,6 +583,12 @@ function switchTab(tab) {
     }
     if (tab === 'team') {
         loadTeam().catch(showApiError);
+    }
+    if (tab === 'ai') {
+        loadAiConfig().catch(showApiError);
+    }
+    if (tab === 'report') {
+        loadReport().catch(showApiError);
     }
     if (tab === 'platform') {
         loadPlatform().catch(showApiError);
@@ -953,6 +1072,71 @@ async function updateTeamUser(id, payload) {
     await loadTeam();
 }
 
+async function loadAiConfig() {
+    const config = await api('/api/ai/config');
+    $('ai-model').value = config.model || '';
+    $('ai-topk').value = config.topK || 5;
+    $('ai-extra').value = config.extraInstructions || '';
+    $('ai-enabled').value = String(config.enabled);
+}
+
+async function saveAiConfig(event) {
+    event.preventDefault();
+    await api('/api/ai/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model: $('ai-model').value.trim(),
+            topK: Number($('ai-topk').value || 5),
+            extraInstructions: $('ai-extra').value.trim(),
+            enabled: $('ai-enabled').value === 'true',
+        }),
+    });
+    alert('AI 设置已保存');
+}
+
+async function loadReport() {
+    const report = await api('/api/reports/tenant?days=30');
+    const tickets = report.tickets;
+    const feedback = report.aiFeedback;
+    const usage = report.usage;
+    const box = $('report-cards');
+    box.innerHTML = '';
+    box.appendChild(usageCard('工单总数', tickets.total,
+        `待处理 ${tickets.open} · 处理中 ${tickets.pending} · 已关闭 ${tickets.closed}`));
+    box.appendChild(usageCard('首次响应均值', formatSeconds(tickets.first_response_avg_seconds), ''));
+    box.appendChild(usageCard('解决均值', formatSeconds(tickets.resolution_avg_seconds), ''));
+    box.appendChild(usageCard('SLA 超时', tickets.sla_breached, ''));
+    box.appendChild(usageCard('AI 采纳率', `${feedback.adoptionRate}%`,
+        `采纳 ${feedback.adopt} · 修改 ${feedback.edit} · 驳回 ${feedback.reject}`));
+    box.appendChild(usageCard('CSAT', tickets.csat_avg
+        ? `${Number(tickets.csat_avg).toFixed(2)} / 5` : '暂无', `${tickets.csat_count} 条评价`));
+    box.appendChild(usageCard('本月 tokens', Number(usage.tokensThisMonth).toLocaleString(),
+        `预算 ${Number(usage.monthlyTokenBudget).toLocaleString()}`));
+    box.appendChild(usageCard('本月成本', formatCost(usage.costMicrosThisMonth), '按当前单价估算'));
+    renderDistribution($('report-category'), report.byCategory, 'category', categoryLabel);
+    renderDistribution($('report-priority'), report.byPriority, 'priority', priorityLabel);
+}
+
+function formatSeconds(value) {
+    if (value === null || value === undefined) return '暂无';
+    const seconds = Number(value);
+    return seconds < 60 ? `${Math.round(seconds)} 秒` : `${(seconds / 60).toFixed(1)} 分钟`;
+}
+
+function renderDistribution(tbody, rows, key, labeler) {
+    tbody.innerHTML = '';
+    for (const row of rows) {
+        const tr = document.createElement('tr');
+        const name = document.createElement('td');
+        name.textContent = labeler(row[key]);
+        const count = document.createElement('td');
+        count.textContent = row.count;
+        tr.append(name, count);
+        tbody.appendChild(tr);
+    }
+}
+
 function showApiError(error) {
     let message = error && error.message ? error.message : '请求失败';
     try {
@@ -1004,8 +1188,11 @@ $('tab-tickets').addEventListener('click', () => switchTab('tickets'));
 $('tab-wiki').addEventListener('click', () => switchTab('wiki'));
 $('tab-usage').addEventListener('click', () => switchTab('usage'));
 $('tab-team').addEventListener('click', () => switchTab('team'));
+$('tab-ai').addEventListener('click', () => switchTab('ai'));
+$('tab-report').addEventListener('click', () => switchTab('report'));
 $('tab-platform').addEventListener('click', () => switchTab('platform'));
 $('reply-form').addEventListener('submit', (event) => sendReply(event).catch(showApiError));
+$('attachment-form').addEventListener('submit', (event) => uploadAttachment(event).catch(showApiError));
 $('reply-content').addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         sendReply(event).catch(showApiError);
@@ -1018,6 +1205,9 @@ $('platform-refresh').addEventListener('click', () => loadPlatform().catch(showA
 $('tenant-form').addEventListener('submit', (event) => createTenant(event).catch(showApiError));
 $('team-refresh').addEventListener('click', () => loadTeam().catch(showApiError));
 $('team-form').addEventListener('submit', (event) => createTeamUser(event).catch(showApiError));
+$('ai-refresh').addEventListener('click', () => loadAiConfig().catch(showApiError));
+$('ai-form').addEventListener('submit', (event) => saveAiConfig(event).catch(showApiError));
+$('report-refresh').addEventListener('click', () => loadReport().catch(showApiError));
 $('new-page').addEventListener('click', newWikiPage);
 $('add-section').addEventListener('click', () => addSectionCard());
 $('wiki-save').addEventListener('click', () => saveWikiPage().catch(showApiError));

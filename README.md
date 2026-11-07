@@ -274,7 +274,17 @@ helpdesk_ai_stream_total{result}   done / partial / error
 helpdesk_llm_fallback_total        LLM 失败后的降级次数
 helpdesk_citation_missing_total    有检索结果但模型未标注引用
 helpdesk_pii_redacted_total        发送 LLM 前发生 PII 脱敏的次数
+helpdesk_sla_breaches_total        SLA 首次响应超时工单数
 ```
+
+Prometheus/Grafana 使用 Compose 的 `observability` profile：
+
+```bash
+cd deploy
+sudo docker compose --profile observability up -d
+```
+
+Prometheus 监听 `127.0.0.1:9090`，Grafana 监听 `127.0.0.1:3000`，默认不暴露公网。
 
 wiki 语料实测：embedding 15–20ms、向量检索 2–4ms、FTS 80–90ms、重排 170–210ms、LLM 2.8s。
 
@@ -286,20 +296,25 @@ wiki 语料实测：embedding 15–20ms、向量检索 2–4ms、FTS 80–90ms�
 - 工作台：登录、工单列表、新建、AI 流式建议、引用展示
 - 人工闭环：客服回复框，回复后工单进入处理中
 - 客户闭环：公开工单入口、查询码、客户追加回复、CSAT、内部备注
+- 附件：客户/坐席上传图片、PDF、文本；内部附件不进入客户门户
 - 团队管理：租户管理员创建坐席、调整角色、停用账号
 - 知识库：wiki 空间 / 页面 / 小节，页面 CRUD、可见性、负责人、复核时间、审计日志
 - 索引：小节级 BGE 向量 + bigram tsvector（GIN），页面编辑后增量重建
 - 索引可靠性：事务性 outbox + Redis Stream + PEL 重投 + DLQ，页面保存异步索引
 - 检索：全文 + 向量混合召回 → RRF → 新鲜度加权 → BGE cross-encoder 重排
 - AI：DeepSeek 流式回复、`[n]` 引用映射、token 计量、断连时保留部分回答
-- AI 闭环：建议采纳/修改/驳回、反馈入库、PII 脱敏
+- AI 闭环：建议采纳/修改/驳回、反馈入库、PII 脱敏、租户级模型/topK/补充规则配置
+- 工具调用：只读订单查询，结果注入 RAG prompt，调用记录写入 `tool_call_log`
 - 安全：wiki 片段分隔/转义/可疑标记，降低提示词注入风险
 - 可用性：DeepSeek 失败前重试 1 次，仍失败时返回明确降级话术
 - 配额：租户级每分钟限流（Redis + Lua）、月度 token 预算
 - 用量：按租户统计 token 与成本
 - 用量面板：本月 tokens、预算使用率、成本、限流、近 14 天趋势
+- SLA：按优先级计算首次响应截止时间，定时扫描超时工单并记录指标
+- 报表：工单状态、SLA、首次响应/解决时长、CSAT、AI 采纳率、分类/优先级分布、成本
 - 平台管理：租户开通、停用/启用、JSON 导出、异步删除、平台级审计
-- 可观测：Actuator、Micrometer、Prometheus
+- 安全基线：登录限流、JWT `jti` 撤销、登出、安全响应头
+- 可观测：Actuator、Micrometer、Prometheus、Grafana 面板与告警规则
 
 ## 已知限制
 
