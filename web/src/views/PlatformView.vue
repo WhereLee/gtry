@@ -194,13 +194,13 @@ onMounted(() => {
     <div class="page-header">
       <div>
         <h2>平台管理</h2>
-        <div class="muted small">租户生命周期、用量与数据导出</div>
+        <p class="page-sub">租户生命周期、用量和数据导出</p>
       </div>
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
+      <el-button :icon="Refresh" size="small" @click="load">刷新</el-button>
     </div>
 
-    <el-card class="content-card" shadow="never">
-      <h3>开通租户</h3>
+    <section class="panel">
+      <div class="panel-head"><h3>开通租户</h3></div>
       <div class="form-grid">
         <el-form-item label="Slug"><el-input v-model="form.slug" placeholder="acme-support" /></el-form-item>
         <el-form-item label="名称"><el-input v-model="form.name" placeholder="Acme Support" /></el-form-item>
@@ -216,15 +216,17 @@ onMounted(() => {
         <el-form-item label="管理员密码"><el-input v-model="form.adminPassword" type="password" show-password placeholder="至少 8 位" /></el-form-item>
         <el-form-item label="管理员名称"><el-input v-model="form.adminDisplayName" placeholder="Admin" /></el-form-item>
       </div>
-      <el-button type="primary" :icon="Plus" :loading="creating" @click="createTenant">创建租户</el-button>
-    </el-card>
+      <div class="form-actions">
+        <el-button type="primary" size="small" :icon="Plus" :loading="creating" @click="createTenant">创建租户</el-button>
+      </div>
+    </section>
 
-    <el-card class="content-card" shadow="never">
+    <section class="panel">
       <div class="ticket-filter">
-        <h3>租户列表</h3>
+        <div class="panel-head"><h3>租户列表</h3></div>
         <el-switch v-model="showDeleted" active-text="显示回收站" />
       </div>
-      <div class="muted small" style="margin-bottom: 10px">删除后进入回收站，30 天后自动彻底清理。</div>
+      <div class="panel-note">删除后进入回收站，30 天后自动彻底清理。</div>
       <el-table :data="visibleTenants" size="small">
         <el-table-column label="租户" min-width="190">
           <template #default="{ row }">
@@ -268,11 +270,11 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </section>
 
-    <el-card v-loading="auditLoading" class="content-card" shadow="never">
+    <section v-loading="auditLoading" class="panel">
       <div class="ticket-filter">
-        <h3>平台审计</h3>
+        <div class="panel-head"><h3>平台审计</h3></div>
         <div class="toolbar">
           <el-input v-model="auditAction" placeholder="动作，如 tenant.create" style="width: 220px" clearable />
           <el-select v-model="auditTargetType" style="width: 140px" clearable>
@@ -293,6 +295,6 @@ onMounted(() => {
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </section>
   </div>
 </template>

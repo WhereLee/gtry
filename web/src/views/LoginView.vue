@@ -37,17 +37,21 @@ async function submit() {
 
 <template>
   <div class="login-page">
-    <div class="login-brand">
+    <section class="login-intro">
       <div class="brand-mark">H</div>
-      <div>
-        <h1>Helpdesk</h1>
-        <p>多租户 AI 工单与客服平台</p>
+      <h1>Helpdesk</h1>
+      <p>客服工单工作台</p>
+      <div class="login-note">
+        <span>内部系统</span>
+        <span>请使用分配的账号登录</span>
       </div>
-    </div>
+    </section>
 
-    <el-card class="login-card" shadow="never">
-      <h2>登录工作台</h2>
-      <p class="muted">使用租户、邮箱和密码登录</p>
+    <section class="login-panel">
+      <div class="login-panel-head">
+        <h2>登录</h2>
+        <p class="muted">进入租户工作台</p>
+      </div>
       <el-form label-position="top" @submit.prevent="submit">
         <el-form-item label="租户">
           <el-select
@@ -67,7 +71,14 @@ async function submit() {
           <el-input v-model="email" autocomplete="username" data-testid="login-email" />
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="password" type="password" show-password autocomplete="current-password" data-testid="login-password" @keyup.enter="submit" />
+          <el-input
+            v-model="password"
+            type="password"
+            show-password
+            autocomplete="current-password"
+            data-testid="login-password"
+            @keyup.enter="submit"
+          />
         </el-form-item>
         <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
         <el-button class="full-width login-submit" type="primary" :loading="loading" data-testid="login-submit" @click="submit">
@@ -75,9 +86,9 @@ async function submit() {
         </el-button>
       </el-form>
       <div class="login-hint">
-        <span>客服：agent@acme.test / agent123</span>
-        <span>管理员：admin@acme.test / admin123</span>
+        <span>客服 agent@acme.test / agent123</span>
+        <span>管理员 admin@acme.test / admin123</span>
       </div>
-    </el-card>
+    </section>
   </div>
 </template>

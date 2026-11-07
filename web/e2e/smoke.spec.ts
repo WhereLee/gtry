@@ -23,6 +23,7 @@ test('agent can log in and see the workbench', async ({ page }) => {
 test('agent can create a ticket, reply and close it', async ({ page }) => {
   await login(page, 'acme', 'agent@acme.test', 'agent123')
   const subject = `E2E 工单 ${Date.now()}`
+  await page.getByTestId('ticket-create').click()
   await page.getByPlaceholder('工单标题').fill(subject)
   await page.getByPlaceholder('客户问题描述').fill('Playwright 自动化创建工单。')
   await page.getByRole('button', { name: '新建工单' }).click()

@@ -38,6 +38,16 @@ public class TicketController {
         return ticketService.list(status);
     }
 
+    @GetMapping("/page")
+    public TicketDtos.TicketPage page(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        return ticketService.page(status, q, page, size);
+    }
+
     @GetMapping("/breached")
     public List<TicketDtos.TicketView> breached() {
         return ticketService.listBreached();

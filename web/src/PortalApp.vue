@@ -233,7 +233,7 @@ onMounted(() => {
     <header class="portal-top">
       <div class="brand">
         <span class="brand-mark small">H</span>
-        <span>Helpdesk 客户中心</span>
+        <span>客户支持</span>
       </div>
       <div class="muted small">渠道：{{ channelKey }}</div>
     </header>
@@ -242,7 +242,7 @@ onMounted(() => {
       <template v-if="!ticket">
         <el-card class="portal-card" shadow="never">
           <h1>提交问题</h1>
-          <p class="muted">留下联系方式，客服会尽快处理。</p>
+          <p class="muted">提交后请保存查询码，后续可凭查询码继续沟通。</p>
           <div class="portal-form">
             <el-form-item label="标题">
               <el-input v-model="createForm.subject" maxlength="255" placeholder="例如：订单退货咨询" data-testid="portal-subject" />
@@ -261,7 +261,7 @@ onMounted(() => {
         </el-card>
 
         <el-card class="portal-card" shadow="never">
-          <h2>查询已有工单</h2>
+          <h2>继续已有工单</h2>
           <div class="portal-form">
             <el-form-item label="工单 ID"><el-input v-model="lookupForm.id" placeholder="创建工单时返回的 ID" /></el-form-item>
             <el-form-item label="查询码"><el-input v-model="lookupForm.token" placeholder="创建工单时返回的查询码" /></el-form-item>
@@ -285,7 +285,7 @@ onMounted(() => {
 
         <div class="token-box">
           <div>
-            <div class="muted small">查询码（请保存，刷新页面后需要用它查询）</div>
+            <div class="muted small">查询码</div>
             <code data-testid="portal-token">{{ token }}</code>
           </div>
           <el-button text type="primary" :icon="CopyDocument" @click="copyToken">复制</el-button>
@@ -321,7 +321,7 @@ onMounted(() => {
             <div v-if="ticket.csatComment" class="muted small">{{ ticket.csatComment }}</div>
           </template>
           <template v-else>
-            <div class="muted small">问题已关闭，请评价本次服务</div>
+            <div class="muted small">本次服务评价</div>
             <el-rate v-model="rating" />
             <el-input v-model="csatComment" type="textarea" :rows="2" placeholder="补充评价（可选）" maxlength="1000" />
             <el-button @click="submitCsat">提交评价</el-button>

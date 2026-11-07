@@ -102,6 +102,21 @@ public class TicketService {
         return tickets.list(status, 100).stream().map(TicketDtos.TicketView::of).toList();
     }
 
+    public TicketDtos.TicketPage page(String status, String query, int page, int size) {
+        int safeSize = Math.min(100, Math.max(1, size));
+        long total = tickets.count(status, query);
+        int totalPages = (int) Math.ceil((double) total / safeSize);
+        int safePage = Math.min(Math.max(1, page), Math.max(1, totalPages));
+        long offset = (long) (safePage - 1) * safeSize;
+        List<TicketDtos.TicketView> items = tickets
+                .list(status, query, safeSize, offset)
+                .stream()
+                .map(TicketDtos.TicketView::of)
+                .toList();
+        boolean hasNext = (long) safePage * safeSize < total;
+        return new TicketDtos.TicketPage(items, safePage, safeSize, total, totalPages, hasNext);
+    }
+
     public TicketDtos.TicketDetail get(UUID id) {
         Ticket ticket = tickets.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ticket_not_found"));

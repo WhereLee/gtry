@@ -53,11 +53,20 @@ export function formatSeconds(value?: number | null) {
 }
 
 export function formatDate(value?: string | null) {
-  return value ? new Date(value).toLocaleDateString() : '—'
+  return value ? new Date(value).toLocaleDateString('zh-CN') : '—'
 }
 
 export function formatDateTime(value?: string | null) {
-  return value ? new Date(value).toLocaleString() : '—'
+  return value
+    ? new Date(value).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    : '—'
 }
 
 export function priorityType(priority?: string | null) {

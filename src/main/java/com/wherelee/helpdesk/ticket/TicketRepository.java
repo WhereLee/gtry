@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -89,24 +90,49 @@ public class TicketRepository {
     }
 
     public List<Ticket> list(String status, int limit) {
-        if (status == null || status.isBlank()) {
-            return jdbc.query("""
-                    SELECT id, tenant_id, channel_id, external_ref, subject, description,
-                           status, priority, category, triage_source, triage_reason,
-                           customer_name, customer_email, csat_rating, csat_comment, csat_at,
-                           first_response_at, resolved_at, sla_due_at, sla_breached,
-                           assignee_id, created_at, updated_at
-                    FROM ticket ORDER BY created_at DESC LIMIT ?
-                    """, MAPPER, limit);
-        }
-        return jdbc.query("""
+        return list(status, null, limit, 0);
+    }
+
+    public List<Ticket> list(String status, String query, int limit, long offset) {
+        StringBuilder sql = new StringBuilder("""
                 SELECT id, tenant_id, channel_id, external_ref, subject, description,
                        status, priority, category, triage_source, triage_reason,
                        customer_name, customer_email, csat_rating, csat_comment, csat_at,
                        first_response_at, resolved_at, sla_due_at, sla_breached,
                        assignee_id, created_at, updated_at
-                FROM ticket WHERE status = ? ORDER BY created_at DESC LIMIT ?
-                """, MAPPER, status, limit);
+                FROM ticket
+                WHERE 1 = 1
+                """);
+        List<Object> args = new ArrayList<>();
+        appendFilters(sql, args, status, query);
+        sql.append(" ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?");
+        args.add(limit);
+        args.add(offset);
+        return jdbc.query(sql.toString(), MAPPER, args.toArray());
+    }
+
+    public long count(String status, String query) {
+        StringBuilder sql = new StringBuilder("SELECT count(*) FROM ticket WHERE 1 = 1");
+        List<Object> args = new ArrayList<>();
+        appendFilters(sql, args, status, query);
+        Long count = jdbc.queryForObject(sql.toString(), Long.class, args.toArray());
+        return count == null ? 0 : count;
+    }
+
+    private static void appendFilters(
+            StringBuilder sql, List<Object> args, String status, String query
+    ) {
+        if (status != null && !status.isBlank()) {
+            sql.append(" AND status = ?");
+            args.add(status);
+        }
+        if (query != null && !query.isBlank()) {
+            String like = "%" + query.trim() + "%";
+            sql.append(" AND (subject ILIKE ? OR customer_name ILIKE ? OR customer_email ILIKE ?)");
+            args.add(like);
+            args.add(like);
+            args.add(like);
+        }
     }
 
     public boolean updateStatus(UUID id, String status) {

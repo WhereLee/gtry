@@ -296,7 +296,7 @@ onMounted(loadSpaces)
 <template>
   <div class="wiki-layout">
     <aside class="wiki-sidebar">
-      <el-card class="panel-card" shadow="never">
+      <section class="panel wiki-side-panel">
         <h3>知识空间</h3>
         <ul class="wiki-list">
           <li
@@ -311,9 +311,9 @@ onMounted(loadSpaces)
             <div class="sub">{{ space.slug }}</div>
           </li>
         </ul>
-      </el-card>
+      </section>
 
-      <el-card class="panel-card" shadow="never">
+      <section class="panel wiki-side-panel">
         <div class="ticket-filter">
           <h3>页面</h3>
           <el-button text type="primary" :icon="Plus" @click="newPage">新建</el-button>
@@ -333,10 +333,10 @@ onMounted(loadSpaces)
             </div>
           </li>
         </ul>
-      </el-card>
+      </section>
     </aside>
 
-    <el-card v-loading="loading" class="panel-card" shadow="never">
+    <section v-loading="loading" class="panel wiki-main-panel">
       <div class="detail-header">
         <div>
           <h2>{{ selectedPageId ? '编辑页面' : '知识库' }}</h2>
@@ -408,7 +408,7 @@ onMounted(loadSpaces)
           <el-empty v-if="searchResult && !searchResult.hits.length" description="没有命中结果" :image-size="60" />
         </div>
       </div>
-    </el-card>
+    </section>
 
     <el-dialog v-model="versionDialogVisible" title="版本历史" width="860px">
       <div v-loading="versionLoading" class="version-layout">

@@ -76,50 +76,54 @@ onMounted(load)
     <div class="page-header">
       <div>
         <h2>团队</h2>
-        <div class="muted small">创建坐席、调整角色、停用账号</div>
+        <p class="page-sub">账号由管理员创建，不开放自助注册</p>
       </div>
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
+      <el-button :icon="Refresh" size="small" @click="load">刷新</el-button>
     </div>
 
-    <el-card class="content-card" shadow="never">
-      <h3>新增成员</h3>
-      <div class="form-grid">
-        <el-form-item label="邮箱"><el-input v-model="form.email" type="email" /></el-form-item>
-        <el-form-item label="显示名称"><el-input v-model="form.displayName" /></el-form-item>
+    <section class="panel">
+      <div class="panel-head"><h3>新增成员</h3></div>
+      <div class="inline-form">
+        <el-form-item label="邮箱"><el-input v-model="form.email" type="email" size="small" placeholder="name@company.com" /></el-form-item>
+        <el-form-item label="显示名称"><el-input v-model="form.displayName" size="small" /></el-form-item>
         <el-form-item label="角色">
-          <el-select v-model="form.role" class="full-width">
-            <el-option label="AGENT" value="AGENT" />
-            <el-option label="TENANT_ADMIN" value="TENANT_ADMIN" />
+          <el-select v-model="form.role" size="small" class="full-width">
+            <el-option label="客服" value="AGENT" />
+            <el-option label="租户管理员" value="TENANT_ADMIN" />
           </el-select>
         </el-form-item>
-        <el-form-item label="初始密码"><el-input v-model="form.password" type="password" show-password placeholder="至少 8 位" /></el-form-item>
+        <el-form-item label="初始密码"><el-input v-model="form.password" type="password" show-password size="small" placeholder="至少 8 位" /></el-form-item>
+        <el-button type="primary" size="small" :icon="Plus" :loading="creating" @click="createUser">创建成员</el-button>
       </div>
-      <el-button type="primary" :icon="Plus" :loading="creating" @click="createUser">创建成员</el-button>
-    </el-card>
+    </section>
 
-    <el-card class="content-card" shadow="never">
-      <h3>成员列表</h3>
+    <section class="panel">
+      <div class="panel-head">
+        <h3>成员</h3>
+        <span class="pane-sub">{{ users.length }} 个账号</span>
+      </div>
       <el-table :data="users" size="small">
         <el-table-column label="成员" min-width="220">
           <template #default="{ row }">
             <div>{{ row.displayName }}</div>
-            <div class="muted small">{{ row.email }}</div>
+            <div class="pane-sub">{{ row.email }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="角色" width="190">
+        <el-table-column label="角色" width="180">
           <template #default="{ row }">
             <el-select v-model="row.role" size="small">
-              <el-option label="AGENT" value="AGENT" />
-              <el-option label="TENANT_ADMIN" value="TENANT_ADMIN" />
+              <el-option label="客服" value="AGENT" />
+              <el-option label="租户管理员" value="TENANT_ADMIN" />
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="110">
+        <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag size="small" :type="row.status === 'ACTIVE' ? 'success' : 'danger'">{{ row.status }}</el-tag>
+            <span class="status-dot" :class="row.status === 'ACTIVE' ? 'status-pending' : 'status-closed'" />
+            <span class="pane-sub">{{ row.status === 'ACTIVE' ? '启用' : '停用' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="230">
+        <el-table-column label="操作" width="220" align="right">
           <template #default="{ row }">
             <el-button size="small" @click="updateUser(row, { role: row.role })">保存角色</el-button>
             <el-button size="small" :type="row.status === 'ACTIVE' ? 'danger' : 'success'" plain @click="updateUser(row, { status: row.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE' })">
@@ -128,6 +132,6 @@ onMounted(load)
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
+    </section>
   </div>
 </template>

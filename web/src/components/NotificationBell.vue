@@ -26,12 +26,25 @@ async function load() {
   }
 }
 
+async function loadCount() {
+  try {
+    const count = await api<{ count: number }>('/api/notifications/unread-count')
+    unreadCount.value = Number(count.count || 0)
+  } catch {
+    // notifications are non-critical
+  }
+}
+
 async function markRead(item: NotificationItem) {
   if (item.readAt) return
+  const previous = item.readAt
+  item.readAt = new Date().toISOString()
+  unreadCount.value = Math.max(0, unreadCount.value - 1)
   try {
     await api(`/api/notifications/${item.id}/read`, { method: 'POST' })
-    await load()
   } catch (error) {
+    item.readAt = previous
+    unreadCount.value += 1
     console.warn(friendlyError(error))
   }
 }
@@ -39,18 +52,21 @@ async function markRead(item: NotificationItem) {
 async function markAllRead() {
   try {
     await api('/api/notifications/read-all', { method: 'POST' })
-    await load()
+    const now = new Date().toISOString()
+    items.value.forEach((item) => { item.readAt = item.readAt || now })
+    unreadCount.value = 0
   } catch (error) {
     console.warn(friendlyError(error))
   }
 }
 
 function onChanged() {
-  load()
+  if (visible.value) load()
+  else loadCount()
 }
 
 onMounted(() => {
-  load()
+  loadCount()
   window.addEventListener('helpdesk:notifications-changed', onChanged)
 })
 
@@ -60,7 +76,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <el-popover v-model:visible="visible" placement="bottom-end" :width="380" trigger="click" @show="load">
+  <el-popover v-model:visible="visible" placement="bottom-end" :width="360" trigger="click" @show="load">
     <template #reference>
       <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99">
         <el-button text :icon="Bell" aria-label="通知" />

@@ -53,6 +53,15 @@ export interface TicketDetail {
   messages: TicketMessage[]
 }
 
+export interface TicketPage {
+  items: Ticket[]
+  page: number
+  size: number
+  total: number
+  totalPages: number
+  hasNext: boolean
+}
+
 export interface Agent {
   id: string
   displayName: string

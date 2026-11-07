@@ -97,4 +97,14 @@ public final class TicketDtos {
 
     public record TicketDetail(TicketView ticket, List<MessageView> messages) {
     }
+
+    public record TicketPage(
+            List<TicketView> items,
+            int page,
+            int size,
+            long total,
+            int totalPages,
+            boolean hasNext
+    ) {
+    }
 }
