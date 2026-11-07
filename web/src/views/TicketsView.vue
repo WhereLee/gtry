@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Plus, Refresh, UploadFilled } from '@element-plus/icons-vue'
-import { api, download, friendlyError, getToken } from '@/api'
+import { api, apiUrl, download, friendlyError, getToken } from '@/api'
 import type {
   Agent, Attachment, CurrentUser, Ticket, TicketDetail, TicketMessage, ToolCall,
 } from '@/types'
@@ -279,7 +279,7 @@ async function suggest() {
   streamMessageId.value = null
   streamDone.value = false
   try {
-    const response = await fetch(`/api/tickets/${activeId.value}/ai-suggest`, {
+    const response = await fetch(apiUrl(`/api/tickets/${activeId.value}/ai-suggest`), {
       method: 'POST',
       headers: { Authorization: `Bearer ${getToken()}` },
     })

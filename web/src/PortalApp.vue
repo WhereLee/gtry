@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CopyDocument, Refresh, UploadFilled } from '@element-plus/icons-vue'
-import { errorCode } from '@/api'
+import { apiUrl, errorCode } from '@/api'
 import type { Attachment, CreatePublicTicketResponse, PublicTicket } from '@/types'
 import {
   authorLabel, categoryLabel, formatDateTime, formatSize, statusLabel, statusType,
@@ -53,7 +53,7 @@ async function portalApi<T>(path: string, options: RequestInit = {}, withToken =
   if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
-  const response = await fetch(path, { ...options, headers })
+  const response = await fetch(apiUrl(path), { ...options, headers })
   if (!response.ok) throw new Error(await response.text())
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
@@ -136,7 +136,7 @@ async function onFilePicked(event: Event) {
   form.append('file', file)
   uploading.value = true
   try {
-    await fetch(`/api/public/tickets/${ticketId.value}/attachments`, {
+    await fetch(apiUrl(`/api/public/tickets/${ticketId.value}/attachments`), {
       method: 'POST',
       headers: { 'X-Ticket-Token': token.value },
       body: form,
@@ -155,7 +155,7 @@ async function onFilePicked(event: Event) {
 
 async function downloadAttachment(attachment: Attachment) {
   try {
-    const response = await fetch(`/api/public/tickets/${ticketId.value}/attachments/${attachment.id}`, {
+    const response = await fetch(apiUrl(`/api/public/tickets/${ticketId.value}/attachments/${attachment.id}`), {
       headers: { 'X-Ticket-Token': token.value },
     })
     if (!response.ok) throw new Error(await response.text())

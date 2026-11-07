@@ -1,5 +1,16 @@
 const TOKEN_KEY = 'helpdesk.token'
 
+const pagePath = window.location.pathname
+const pageBase = pagePath.endsWith('/')
+  ? pagePath
+  : pagePath.slice(0, pagePath.lastIndexOf('/') + 1)
+export const API_BASE = `${pageBase}api`
+
+export function apiUrl(path: string): string {
+  if (path.startsWith('/api/')) return `${API_BASE}${path.slice(4)}`
+  return path
+}
+
 export class ApiError extends Error {
   status: number
 
@@ -26,7 +37,7 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     headers.set('Content-Type', 'application/json')
   }
 
-  const response = await fetch(path, { ...options, headers })
+  const response = await fetch(apiUrl(path), { ...options, headers })
   if (response.status === 401) {
     setToken(null)
     window.dispatchEvent(new CustomEvent('helpdesk:unauthorized'))
@@ -42,7 +53,7 @@ export async function download(path: string, filename: string): Promise<void> {
   const headers = new Headers()
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  const response = await fetch(path, { headers })
+  const response = await fetch(apiUrl(path), { headers })
   if (!response.ok) throw new ApiError(await response.text(), response.status)
   const blob = await response.blob()
   const url = URL.createObjectURL(blob)

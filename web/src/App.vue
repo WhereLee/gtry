@@ -24,7 +24,7 @@ const isTenantAdmin = computed(() => user.value?.role === 'TENANT_ADMIN')
 const isPlatformAdmin = computed(() => user.value?.role === 'PLATFORM_ADMIN')
 const portalLink = computed(() => {
   const key = user.value?.tenantSlug === 'cloudwise' ? 'cloudwise-demo-key' : 'acme-demo-key'
-  return `/portal.html?channel=${key}`
+  return `./portal.html?channel=${key}`
 })
 
 async function loadUsage() {
