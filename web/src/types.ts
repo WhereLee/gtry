@@ -215,6 +215,17 @@ export interface AiConfig {
   enabled: boolean
 }
 
+export interface NotificationItem {
+  id: string
+  type: string
+  title: string
+  body: string
+  targetType?: string | null
+  targetId?: string | null
+  readAt?: string | null
+  createdAt: string
+}
+
 export interface PublicMessage {
   authorType: string
   content: string

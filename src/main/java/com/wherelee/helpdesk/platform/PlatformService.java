@@ -2,6 +2,7 @@ package com.wherelee.helpdesk.platform;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wherelee.helpdesk.attachment.AttachmentService;
 import com.wherelee.helpdesk.tenant.Tenant;
 import com.wherelee.helpdesk.tenant.TenantContext;
 import com.wherelee.helpdesk.tenant.TenantRepository;
@@ -37,6 +38,7 @@ public class PlatformService {
     private final WikiRepository wikiRepository;
     private final PlatformRepository platformRepository;
     private final TenantDeletionService deletionService;
+    private final AttachmentService attachmentService;
     private final PasswordEncoder passwordEncoder;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper;
@@ -47,6 +49,7 @@ public class PlatformService {
             WikiRepository wikiRepository,
             PlatformRepository platformRepository,
             TenantDeletionService deletionService,
+            AttachmentService attachmentService,
             PasswordEncoder passwordEncoder,
             PlatformTransactionManager transactionManager,
             ObjectMapper objectMapper
@@ -56,6 +59,7 @@ public class PlatformService {
         this.wikiRepository = wikiRepository;
         this.platformRepository = platformRepository;
         this.deletionService = deletionService;
+        this.attachmentService = attachmentService;
         this.passwordEncoder = passwordEncoder;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.objectMapper = objectMapper;
@@ -64,6 +68,14 @@ public class PlatformService {
     public List<PlatformDtos.TenantSummary> listTenants() {
         requirePlatformAdmin();
         return tenants.listWithStats().stream().map(PlatformDtos.TenantSummary::of).toList();
+    }
+
+    public List<Map<String, Object>> auditLogs(
+            String action, String targetType, String targetId, int limit
+    ) {
+        requirePlatformAdmin();
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+        return platformRepository.searchAudit(action, targetType, targetId, safeLimit);
     }
 
     public PlatformDtos.TenantSummary createTenant(PlatformDtos.CreateTenantRequest request) {
@@ -226,6 +238,7 @@ public class PlatformService {
                         objectMapper.writeValueAsString(Map.of(
                                 "slug", tenant.slug(), "retentionDays", retentionDays)));
                 tenants.delete(tenant.id());
+                attachmentService.deleteTenantFiles(tenant.id());
                 purged++;
                 log.info("helpdesk_tenant_purged tenant={} slug={}", tenant.id(), tenant.slug());
             } catch (Exception ex) {

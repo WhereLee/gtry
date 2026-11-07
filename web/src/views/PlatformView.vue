@@ -10,6 +10,10 @@ const tenants = ref<Tenant[]>([])
 const loading = ref(false)
 const creating = ref(false)
 const showDeleted = ref(false)
+const auditLoading = ref(false)
+const auditAction = ref('')
+const auditTargetType = ref('tenant')
+const auditLogs = ref<Array<Record<string, any>>>([])
 const form = reactive({
   slug: '',
   name: '',
@@ -23,6 +27,30 @@ const form = reactive({
 const visibleTenants = computed(() =>
   showDeleted.value ? tenants.value : tenants.value.filter((tenant) => tenant.status !== 'DELETED'),
 )
+
+async function loadAudit() {
+  auditLoading.value = true
+  try {
+    const params = new URLSearchParams({ limit: '100' })
+    if (auditAction.value.trim()) params.set('action', auditAction.value.trim())
+    if (auditTargetType.value.trim()) params.set('targetType', auditTargetType.value.trim())
+    auditLogs.value = await api<Array<Record<string, any>>>(`/api/platform/audit?${params.toString()}`)
+  } catch (error) {
+    ElMessage.error(friendlyError(error))
+  } finally {
+    auditLoading.value = false
+  }
+}
+
+function formatAuditDetail(detail: unknown) {
+  if (detail === null || detail === undefined) return ''
+  const text = typeof detail === 'string' ? detail : JSON.stringify(detail)
+  try {
+    return JSON.stringify(JSON.parse(text))
+  } catch {
+    return text
+  }
+}
 
 async function load() {
   loading.value = true
@@ -62,6 +90,7 @@ async function createTenant() {
     form.adminPassword = ''
     form.adminDisplayName = ''
     await load()
+    await loadAudit()
     ElMessage.success('租户已开通')
   } catch (error) {
     ElMessage.error(friendlyError(error))
@@ -112,6 +141,7 @@ async function deleteTenant(tenant: Tenant) {
     const job = await api<{ state: string }>(`/api/platform/tenants/${tenant.id}?confirm=${encodeURIComponent(value)}`, { method: 'DELETE' })
     if (job.state === 'RUNNING' || job.state === 'IDLE') await pollDeletion(tenant.id)
     await load()
+    await loadAudit()
     ElMessage.success('租户已移入回收站')
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(friendlyError(error))
@@ -122,6 +152,7 @@ async function restoreTenant(tenant: Tenant) {
   try {
     await api(`/api/platform/tenants/${tenant.id}/restore`, { method: 'POST' })
     await load()
+    await loadAudit()
     ElMessage.success('租户已恢复')
   } catch (error) {
     ElMessage.error(friendlyError(error))
@@ -145,13 +176,17 @@ async function purgeTenant(tenant: Tenant) {
     )
     if (job.state === 'RUNNING' || job.state === 'IDLE') await pollDeletion(tenant.id)
     await load()
+    await loadAudit()
     ElMessage.success('租户已彻底删除')
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(friendlyError(error))
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadAudit()
+})
 </script>
 
 <template>
@@ -230,6 +265,31 @@ onMounted(load)
               <el-button size="small" :icon="Download" @click="exportTenant(row)">导出</el-button>
               <el-button size="small" type="danger" plain :disabled="row.slug === 'platform'" @click="deleteTenant(row)">移入回收站</el-button>
             </template>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <el-card v-loading="auditLoading" class="content-card" shadow="never">
+      <div class="ticket-filter">
+        <h3>平台审计</h3>
+        <div class="toolbar">
+          <el-input v-model="auditAction" placeholder="动作，如 tenant.create" style="width: 220px" clearable />
+          <el-select v-model="auditTargetType" style="width: 140px" clearable>
+            <el-option label="全部目标" value="" />
+            <el-option label="tenant" value="tenant" />
+          </el-select>
+          <el-button :icon="Refresh" :loading="auditLoading" @click="loadAudit">查询</el-button>
+        </div>
+      </div>
+      <el-table :data="auditLogs" size="small">
+        <el-table-column prop="createdAt" label="时间" width="200" />
+        <el-table-column prop="action" label="动作" width="180" />
+        <el-table-column prop="targetType" label="目标类型" width="100" />
+        <el-table-column prop="targetId" label="目标 ID" min-width="180" />
+        <el-table-column label="详情" min-width="260">
+          <template #default="{ row }">
+            <span class="muted small">{{ formatAuditDetail(row.detail) }}</span>
           </template>
         </el-table-column>
       </el-table>

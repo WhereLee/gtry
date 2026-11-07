@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Clock, Delete, Plus, Refresh, Search } from '@element-plus/icons-vue'
+import { diffLines } from 'diff'
 import { api, friendlyError } from '@/api'
 import type {
   WikiPage, WikiPageDetail, WikiPageVersion, WikiPageVersionDetail, WikiSearchResult, WikiSpace,
@@ -29,6 +30,8 @@ const versionDialogVisible = ref(false)
 const versionLoading = ref(false)
 const versions = ref<WikiPageVersion[]>([])
 const selectedVersion = ref<WikiPageVersionDetail | null>(null)
+const diffVisible = ref(false)
+const diffData = ref<Array<{ value: string; added?: boolean; removed?: boolean }>>([])
 
 const query = ref('')
 const searching = ref(false)
@@ -201,6 +204,7 @@ async function changeStatus(action: 'submit' | 'approve' | 'reject') {
     meta.value = `${detail.page.spaceName} · ${detail.page.visibility} · ${formatDateTime(detail.page.updatedAt)}`
     await loadPages()
     ElMessage.success(action === 'submit' ? '已提交审核' : action === 'approve' ? '已通过审核' : '已驳回')
+    window.dispatchEvent(new Event('helpdesk:notifications-changed'))
   } catch (error) {
     ElMessage.error(friendlyError(error))
   }
@@ -257,6 +261,18 @@ async function rollbackVersion(version: WikiPageVersion) {
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(friendlyError(error))
   }
+}
+
+function showDiff() {
+  if (!selectedVersion.value) return
+  const currentText = sections.value
+    .map((section) => `## ${section.heading}\n${section.content}`)
+    .join('\n\n')
+  const versionText = selectedVersion.value.sections
+    .map((section) => `## ${section.heading}\n${section.content}`)
+    .join('\n\n')
+  diffData.value = diffLines(versionText, currentText)
+  diffVisible.value = true
 }
 
 async function search() {
@@ -418,10 +434,21 @@ onMounted(loadSpaces)
             <strong>{{ section.heading }}</strong>
             <div class="muted small pre-wrap">{{ section.content }}</div>
           </div>
-          <el-button type="warning" @click="rollbackVersion(selectedVersion.version)">回滚到此版本</el-button>
+          <div class="toolbar">
+            <el-button @click="showDiff">与当前内容对比</el-button>
+            <el-button type="warning" @click="rollbackVersion(selectedVersion.version)">回滚到此版本</el-button>
+          </div>
         </div>
         <el-empty v-else description="选择左侧版本查看内容" :image-size="60" />
       </div>
+    </el-dialog>
+
+    <el-dialog v-model="diffVisible" title="版本差异（版本 → 当前内容）" width="860px">
+      <pre class="diff-view"><span
+        v-for="(line, index) in diffData"
+        :key="index"
+        :class="line.added ? 'diff-add' : line.removed ? 'diff-del' : 'diff-same'"
+      >{{ line.value }}</span></pre>
     </el-dialog>
   </div>
 </template>

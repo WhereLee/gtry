@@ -92,4 +92,14 @@ public class PlatformController {
     public List<PlatformDtos.TenantSummary> usage() {
         return platformService.listTenants();
     }
+
+    @GetMapping("/audit")
+    public List<Map<String, Object>> audit(
+            @RequestParam(required = false) String action,
+            @RequestParam(required = false) String targetType,
+            @RequestParam(required = false) String targetId,
+            @RequestParam(defaultValue = "100") int limit
+    ) {
+        return platformService.auditLogs(action, targetType, targetId, limit);
+    }
 }

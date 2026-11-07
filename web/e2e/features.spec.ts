@@ -48,6 +48,7 @@ test('wiki approval, versions, rollback and tenant recycle bin', async ({ page, 
     await login(page, slug, adminEmail, password)
 
     await page.getByRole('menuitem', { name: '知识库' }).click()
+    await expect(page.getByRole('button', { name: '通知' })).toBeVisible()
     await page.getByRole('button', { name: '新建' }).click()
     await page.getByPlaceholder('页面标题').fill('E2E 审批页面')
     await page.getByPlaceholder('小节标题，例如：适用条件').fill('规则')
@@ -73,6 +74,11 @@ test('wiki approval, versions, rollback and tenant recycle bin', async ({ page, 
     await expect(page.getByText('v1 · E2E 审批页面')).toBeVisible()
     await expect(page.getByText('v2 · E2E 审批页面')).toBeVisible()
     await page.getByText('v1 · E2E 审批页面').click()
+    await page.getByRole('button', { name: '与当前内容对比' }).click()
+    const diffDialog = page.getByRole('dialog', { name: '版本差异（版本 → 当前内容）' })
+    await expect(diffDialog.getByText('第一版内容')).toBeVisible()
+    await expect(diffDialog.getByText('第二版内容')).toBeVisible()
+    await page.keyboard.press('Escape')
     await page.getByRole('button', { name: '回滚到此版本' }).click()
     await page.getByRole('button', { name: '确定' }).click()
     await expect(page.getByText('已发布').first()).toBeVisible()
@@ -94,6 +100,8 @@ test('wiki approval, versions, rollback and tenant recycle bin', async ({ page, 
     await expect(deletedRow.getByText('DELETED')).toBeVisible()
     await deletedRow.getByRole('button', { name: '恢复' }).click()
     await expect(deletedRow.getByText('ACTIVE')).toBeVisible()
+    await expect(page.getByText('tenant.soft_delete').first()).toBeVisible()
+    await expect(page.getByText('tenant.restore').first()).toBeVisible()
   } finally {
     const cleanupLogin = await request.post('/api/auth/login', {
       data: { tenantSlug: 'platform', email: 'platform@helpdesk.test', password: 'platform123' },

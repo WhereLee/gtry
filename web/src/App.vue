@@ -14,6 +14,7 @@ import ReportView from '@/views/ReportView.vue'
 import TeamView from '@/views/TeamView.vue'
 import AiView from '@/views/AiView.vue'
 import PlatformView from '@/views/PlatformView.vue'
+import NotificationBell from '@/components/NotificationBell.vue'
 
 const user = ref<CurrentUser | null>(null)
 const tab = ref('tickets')
@@ -115,6 +116,7 @@ onBeforeUnmount(() => {
       </el-menu>
 
       <div class="top-actions">
+        <NotificationBell />
         <el-link v-if="!isPlatformAdmin" :href="portalLink" target="_blank" type="primary">客户门户</el-link>
         <el-tag v-if="usage" effect="plain" round>
           {{ Number(usage.tokensThisMonth).toLocaleString() }} / {{ Number(usage.monthlyTokenBudget).toLocaleString() }} tokens

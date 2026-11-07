@@ -2,6 +2,8 @@ package com.wherelee.helpdesk.attachment;
 
 import com.wherelee.helpdesk.config.HelpdeskProperties;
 import com.wherelee.helpdesk.ticket.TicketRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
@@ -14,13 +16,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @Service
 public class AttachmentService {
+
+    private static final Logger log = LoggerFactory.getLogger(AttachmentService.class);
 
     private static final Set<String> ALLOWED_TYPES = Set.of(
             "image/png", "image/jpeg", "image/gif", "image/webp",
@@ -86,6 +92,25 @@ public class AttachmentService {
         }
         Resource resource = new FileSystemResource(path);
         return new Download(attachment, resource);
+    }
+
+    public void deleteTenantFiles(UUID tenantId) {
+        Path directory = baseDir.resolve(tenantId.toString()).normalize();
+        if (!directory.startsWith(baseDir) || !Files.exists(directory)) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(directory)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (IOException ex) {
+                    log.warn("helpdesk_attachment_delete_failed path={} error={}", path, ex.getMessage());
+                }
+            });
+        } catch (IOException ex) {
+            log.warn("helpdesk_attachment_tenant_cleanup_failed tenant={} error={}",
+                    tenantId, ex.getMessage());
+        }
     }
 
     private void validate(MultipartFile file) {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.wherelee.helpdesk.outbox.OutboxRepository;
+import com.wherelee.helpdesk.notification.NotificationService;
 import com.wherelee.helpdesk.tenant.TenantContext;
 import com.wherelee.helpdesk.tenant.TenantScope;
 import org.springframework.http.HttpStatus;
@@ -24,6 +25,7 @@ public class WikiPageService {
     private final WikiRepository repository;
     private final WikiIndexService indexService;
     private final OutboxRepository outbox;
+    private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
 
@@ -31,12 +33,14 @@ public class WikiPageService {
             WikiRepository repository,
             WikiIndexService indexService,
             OutboxRepository outbox,
+            NotificationService notificationService,
             ObjectMapper objectMapper,
             PlatformTransactionManager transactionManager
     ) {
         this.repository = repository;
         this.indexService = indexService;
         this.outbox = outbox;
+        this.notificationService = notificationService;
         this.objectMapper = objectMapper;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
@@ -240,6 +244,22 @@ public class WikiPageService {
         transactionTemplate.executeWithoutResult(status -> {
             repository.updatePageStatus(pageId, targetStatus, reviewed ? Instant.now() : null);
             audit(scope, action, pageId, Map.of("status", targetStatus));
+            if ("REVIEW".equals(targetStatus)) {
+                notificationService.notifyTenantAdmins(
+                        scope.tenantId(), scope.userId(),
+                        "WIKI_REVIEW", "知识库页面待审核", page.title(),
+                        "wiki_page", pageId.toString());
+            } else if ("PUBLISHED".equals(targetStatus)) {
+                notificationService.notifyUser(
+                        scope.tenantId(), page.ownerId(), scope.userId(),
+                        "WIKI_APPROVED", "知识库页面已通过", page.title(),
+                        "wiki_page", pageId.toString());
+            } else if ("DRAFT".equals(targetStatus)) {
+                notificationService.notifyUser(
+                        scope.tenantId(), page.ownerId(), scope.userId(),
+                        "WIKI_REJECTED", "知识库页面被驳回", page.title(),
+                        "wiki_page", pageId.toString());
+            }
         });
         return detail(pageId);
     }

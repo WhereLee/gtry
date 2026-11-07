@@ -1,6 +1,7 @@
 package com.wherelee.helpdesk.platform;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wherelee.helpdesk.attachment.AttachmentService;
 import com.wherelee.helpdesk.tenant.Tenant;
 import com.wherelee.helpdesk.tenant.TenantContext;
 import com.wherelee.helpdesk.tenant.TenantRepository;
@@ -23,6 +24,7 @@ public class TenantDeletionService {
 
     private final TenantRepository tenants;
     private final PlatformRepository platformRepository;
+    private final AttachmentService attachmentService;
     private final ObjectMapper objectMapper;
     private final Map<UUID, JobStatus> jobs = new ConcurrentHashMap<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
@@ -34,10 +36,12 @@ public class TenantDeletionService {
     public TenantDeletionService(
             TenantRepository tenants,
             PlatformRepository platformRepository,
+            AttachmentService attachmentService,
             ObjectMapper objectMapper
     ) {
         this.tenants = tenants;
         this.platformRepository = platformRepository;
+        this.attachmentService = attachmentService;
         this.objectMapper = objectMapper;
     }
 
@@ -67,6 +71,7 @@ public class TenantDeletionService {
                 platformRepository.insertAudit(
                         actor.userId(), "tenant.delete.start", "tenant", tenant.id().toString(), detail);
                 tenants.delete(tenant.id());
+                attachmentService.deleteTenantFiles(tenant.id());
                 platformRepository.insertAudit(
                         actor.userId(), "tenant.delete.done", "tenant", tenant.id().toString(), detail);
             });

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.ArrayList;
 
 @Repository
 public class PlatformRepository {
@@ -91,5 +92,33 @@ public class PlatformRepository {
                        created_at::text AS "createdAt"
                 FROM audit_log WHERE tenant_id = ? ORDER BY created_at
                 """, tenantId);
+    }
+
+    public List<Map<String, Object>> searchAudit(
+            String action, String targetType, String targetId, int limit
+    ) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT id, actor_id AS "actorId", action, target_type AS "targetType",
+                       target_id AS "targetId", detail::text AS detail,
+                       created_at::text AS "createdAt"
+                FROM platform_audit_log
+                WHERE 1 = 1
+                """);
+        List<Object> args = new ArrayList<>();
+        if (action != null && !action.isBlank()) {
+            sql.append(" AND action = ?");
+            args.add(action.trim());
+        }
+        if (targetType != null && !targetType.isBlank()) {
+            sql.append(" AND target_type = ?");
+            args.add(targetType.trim());
+        }
+        if (targetId != null && !targetId.isBlank()) {
+            sql.append(" AND target_id = ?");
+            args.add(targetId.trim());
+        }
+        sql.append(" ORDER BY created_at DESC LIMIT ?");
+        args.add(limit);
+        return jdbc.queryForList(sql.toString(), args.toArray());
     }
 }
